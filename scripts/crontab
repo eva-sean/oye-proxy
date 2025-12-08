@@ -1,0 +1,2 @@
+# OCPP Proxy log cleanup - runs daily at 2 AM
+0 2 * * * /usr/local/bin/node /app/scripts/cleanup.js >> /app/logs/cleanup.log 2>&1

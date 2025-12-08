@@ -1,0 +1,27 @@
+services:
+  oye-proxy:
+    build: .
+    container_name: oye-proxy
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      # Persist database file only (not entire db/ directory)
+      - ./data/db:/app/data/db
+      # Persist logs
+      - ./data/logs:/app/logs
+      # Mount .env file (optional)
+      - ./.env:/app/.env:ro
+      # Mount public directory for instant frontend updates
+      - ./public:/app/public:ro
+    environment:
+      - PORT=${PORT:-8080}
+      - DEBUG=${DEBUG:-false}
+      - DB_PATH=/app/data/db/oye-proxy.db
+      - LOG_DIR=/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s

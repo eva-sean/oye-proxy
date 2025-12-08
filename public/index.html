@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCPP Proxy Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>OCPP Proxy Dashboard</h1>
+            <div class="header-stats">
+                <div class="stat">
+                    <span class="stat-label">Online Chargers</span>
+                    <span class="stat-value" id="onlineCount">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Total Messages</span>
+                    <span class="stat-value" id="messageCount">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Maximum Messages</span>
+                    <select id="messageLimitFilter" class="stat-select">
+                        <option value="100" selected>100</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Charger List Sidebar -->
+            <aside class="charger-list">
+                <h2>Charge Points</h2>
+                <div class="filter-controls">
+                    <input type="text" id="chargerFilter" placeholder="Filter chargers..." />
+                </div>
+                <div id="chargersList"></div>
+            </aside>
+
+            <!-- Main View -->
+            <main class="content-area">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="status">Charger Status</button>
+                    <button class="tab-button" data-tab="logs">Message Logs</button>
+                    <button class="tab-button" data-tab="inject">Inject Command</button>
+                </div>
+
+                <!-- Charger Status Tab -->
+                <div id="status-tab" class="tab-content active">
+                    <div class="status-container">
+                        <div class="status-controls">
+                            <select id="statusChargerSelect">
+                                <option value="">Select a charger...</option>
+                            </select>
+                            <button id="refreshStatus" class="btn btn-secondary">Refresh</button>
+                        </div>
+                        <div id="statusDisplay" class="status-display">
+                            <p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">
+                                Select a charger to view status information
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs Tab -->
+                <div id="logs-tab" class="tab-content">
+                    <div class="controls">
+                        <select id="chargerSelect">
+                            <option value="">All Chargers</option>
+                        </select>
+                        <select id="directionFilter">
+                            <option value="">All Directions</option>
+                            <option value="UPSTREAM">Upstream (Charger → CSMS)</option>
+                            <option value="DOWNSTREAM">Downstream (CSMS → Charger)</option>
+                            <option value="INJECTION_REQUEST">Injection Request</option>
+                            <option value="INJECTION_RESPONSE">Injection Response</option>
+                        </select>
+                        <select id="messageTypeFilter">
+                            <option value="">All Message Types</option>
+                        </select>
+                        <select id="timeRangeFilter">
+                            <option value="">Custom Range</option>
+                            <option value="1h">Last 1 Hour</option>
+                            <option value="24h">Last 24 Hours</option>
+                        </select>
+                        <input type="datetime-local" id="dateFrom" title="From date/time" />
+                        <input type="datetime-local" id="dateTo" title="To date/time" />
+                        <button id="clearFilters" class="btn btn-secondary">Clear Filters</button>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="autoscroll" checked />
+                            Auto-scroll
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="autorefresh" checked />
+                            Auto-refresh
+                        </label>
+                    </div>
+
+                    <div class="logs-container" id="logsContainer"></div>
+                </div>
+
+                <!-- Inject Command Tab -->
+                <div id="inject-tab" class="tab-content">
+                    <div class="inject-form">
+                        <h3>Inject OCPP Command</h3>
+
+                        <div class="form-group">
+                            <label for="injectCharger">Charge Point ID</label>
+                            <select id="injectCharger" required>
+                                <option value="">Select a charger...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ocppAction">OCPP Action</label>
+                            <select id="ocppAction" required>
+                                <option value="">Select an action...</option>
+                                <option value="RemoteStartTransaction">RemoteStartTransaction</option>
+                                <option value="RemoteStopTransaction">RemoteStopTransaction</option>
+                                <option value="Reset">Reset</option>
+                                <option value="UnlockConnector">UnlockConnector</option>
+                                <option value="GetConfiguration">GetConfiguration</option>
+                                <option value="ChangeConfiguration">ChangeConfiguration</option>
+                                <option value="ChangeAvailability">ChangeAvailability</option>
+                                <option value="TriggerMessage">TriggerMessage</option>
+                                <option value="GetDiagnostics">GetDiagnostics</option>
+                                <option value="UpdateFirmware">UpdateFirmware</option>
+                                <option value="ClearCache">ClearCache</option>
+                                <option value="DataTransfer">DataTransfer</option>
+                                <option value="__custom__">Custom...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group" id="customActionGroup" style="display: none;">
+                            <label for="customAction">Custom Action Name</label>
+                            <input type="text" id="customAction" placeholder="Enter custom action name" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="payloadEditor">Payload (JSON)</label>
+                            <textarea id="payloadEditor" rows="12" placeholder='{"key": "value"}'></textarea>
+                            <small class="help-text">Enter the OCPP command payload as valid JSON</small>
+                        </div>
+
+                        <div class="form-actions">
+                            <button id="injectBtn" class="btn btn-primary">Send Command</button>
+                            <button id="clearForm" class="btn btn-secondary">Clear</button>
+                        </div>
+
+                        <div id="injectResult" class="inject-result"></div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Proxy Configuration</h3>
+                <button class="modal-close" id="closeConfigModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="targetCsmsUrl">Target CSMS URL</label>
+                    <input type="text" id="targetCsmsUrl" placeholder="wss://csms.example.com/ocpp/" />
+                    <small class="help-text">The WebSocket URL of the upstream CSMS (without charge point ID)</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="csmsForwardingEnabled" />
+                        Enable CSMS Forwarding
+                    </label>
+                    <small class="help-text">When disabled, the proxy runs in standalone mode and handles OCPP messages directly</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="autoChargeEnabled" />
+                        Enable Automatic Charging
+                    </label>
+                    <small class="help-text">When enabled and CSMS is disconnected, auto-starts charging sessions and auto-approves authorize requests</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="defaultIdTag">Default ID Tag</label>
+                    <input type="text" id="defaultIdTag" placeholder="ADMIN_TAG" />
+                    <small class="help-text">ID tag used for automatically started charging sessions</small>
+                </div>
+
+                <div class="form-actions">
+                    <button id="saveConfigBtn" class="btn btn-primary">Save Configuration</button>
+                    <button id="reloadConfigBtn" class="btn btn-secondary">Reload</button>
+                </div>
+
+                <div id="configResult" class="config-result"></div>
+
+                <div class="config-info">
+                    <h4>Current Configuration</h4>
+                    <div id="configDisplay" class="config-display">
+                        <p style="color: var(--text-secondary);">Loading configuration...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OCPP Templates -->
+    <script src="ocpp-templates.js"></script>
+
+    <!-- Main Application -->
+    <script src="app.js"></script>
+</body>
+</html>
