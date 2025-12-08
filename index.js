@@ -235,6 +235,86 @@ server.on('upgrade', (request, socket, head) => {
     });
 });
 
+// Helper function to setup CSMS socket event handlers
+function setupCsmsHandlers(csmsSocket, chargerSocket, chargePointId) {
+    csmsSocket.on('open', () => {
+        logger('INFO', 'CSMS connected successfully', { chargePointId });
+
+        const connection = clients.get(chargePointId);
+        if (connection && connection.messageBuffer.length > 0) {
+            logger('INFO', 'Flushing message buffer to CSMS', {
+                chargePointId,
+                bufferedMessages: connection.messageBuffer.length
+            });
+
+            // Send all buffered messages
+            connection.messageBuffer.forEach(msg => {
+                if (csmsSocket.readyState === WebSocket.OPEN) {
+                    csmsSocket.send(msg);
+                    if (DEBUG) logger('DEBUG', 'PROXY → CSMS (buffered)', { chargePointId, message: msg });
+                }
+            });
+
+            // Clear buffer
+            connection.messageBuffer = [];
+        }
+
+        if (DEBUG) {
+            logger('DEBUG', 'CSMS connection established', {
+                chargePointId,
+                chargerState: chargerSocket.readyState,
+                chargerStateLabel: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][chargerSocket.readyState],
+                negotiatedProtocol: csmsSocket.protocol,
+                csmsUrl: csmsSocket.url
+            });
+        }
+    });
+
+    csmsSocket.on('message', async (message) => {
+        const msgStr = message.toString();
+        if (DEBUG) logger('DEBUG', 'CSMS → PROXY', { chargePointId, message: msgStr });
+
+        try {
+            const parsed = JSON.parse(msgStr);
+            if (Array.isArray(parsed) && parsed[0] === 4) {
+                logger('ERROR', 'CSMS error response', { chargePointId, response: parsed });
+            }
+        } catch (e) {
+            // Not JSON, just forward
+        }
+
+        logMessage(chargePointId, 'DOWNSTREAM', msgStr);
+        if (chargerSocket.readyState === WebSocket.OPEN) {
+            if (DEBUG) logger('DEBUG', 'PROXY → CHARGER', { chargePointId, message: msgStr });
+            chargerSocket.send(msgStr);
+        } else {
+            logger('WARNING', 'Charger disconnected, cannot forward CSMS message', { chargePointId });
+        }
+    });
+
+    csmsSocket.on('close', (code, reason) => {
+        // Code 1000 = normal closure, don't log as INFO unless debug mode
+        const logLevel = (code === 1000 && !DEBUG) ? 'DEBUG' : 'INFO';
+        logger(logLevel, 'CSMS disconnected', { chargePointId, code, reason: reason || 'None' });
+
+        const connection = clients.get(chargePointId);
+        if (connection && connection.csmsSocket === csmsSocket) {
+            connection.csmsSocket = null;
+        }
+    });
+
+    csmsSocket.on('error', (err) => {
+        logger('ERROR', 'CSMS socket error', {
+            chargePointId,
+            error: err.message,
+            code: err.code,
+            errno: err.errno,
+            syscall: err.syscall,
+            stack: DEBUG ? err.stack : undefined
+        });
+    });
+}
+
 wss.on('connection', async (chargerSocket, req, chargePointId) => {
     logger('INFO', 'Charger connected', { chargePointId });
 
@@ -247,18 +327,21 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
 
     const headers = {};
     if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
-    if (req.headers['sec-websocket-protocol']) headers['sec-websocket-protocol'] = req.headers['sec-websocket-protocol'];
 
     clients.set(chargePointId, {
         chargerSocket,
         csmsSocket: null,
         pendingIds: new Set(),
-        pendingIdTags: new Set() // Track idTags from injected RemoteStartTransaction
+        pendingIdTags: new Set(), // Track idTags from injected RemoteStartTransaction
+        messageBuffer: [] // Buffer messages while CSMS is connecting
     });
 
     let csmsSocket = null;
 
-    if (CSMS_FORWARDING_ENABLED) {
+    // Function to connect to CSMS
+    const connectToCsms = () => {
+        if (!CSMS_FORWARDING_ENABLED) return;
+
         const csmsTarget = TARGET_CSMS_URL.endsWith('/')
             ? `${TARGET_CSMS_URL}${chargePointId}`
             : `${TARGET_CSMS_URL}/${chargePointId}`;
@@ -273,12 +356,25 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
         }
 
         try {
-            csmsSocket = new WebSocket(csmsTarget, req.headers['sec-websocket-protocol'], {
+            // Extract protocol - ws library expects string or array
+            const protocol = req.headers['sec-websocket-protocol'];
+            const wsOptions = {
                 headers: headers,
                 rejectUnauthorized: false
-            });
+            };
 
-            clients.get(chargePointId).csmsSocket = csmsSocket;
+            csmsSocket = protocol
+                ? new WebSocket(csmsTarget, protocol, wsOptions)
+                : new WebSocket(csmsTarget, wsOptions);
+
+            const connection = clients.get(chargePointId);
+            if (connection) {
+                connection.csmsSocket = csmsSocket;
+            }
+
+            // Set up CSMS event handlers
+            setupCsmsHandlers(csmsSocket, chargerSocket, chargePointId);
+
         } catch (err) {
             logger('ERROR', 'Failed to create CSMS connection', {
                 chargePointId,
@@ -286,13 +382,38 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
                 stack: DEBUG ? err.stack : undefined
             });
         }
+    };
+
+    // Call connect function
+    if (CSMS_FORWARDING_ENABLED) {
+        connectToCsms();
     } else {
         logger('INFO', 'CSMS forwarding disabled, running in standalone mode', { chargePointId });
     }
 
+    // Track if this is the first message from charger
+    let firstMessageReceived = false;
+
     // --- FROM CHARGER (Upstream) ---
     chargerSocket.on('message', async (message) => {
         const msgStr = message.toString();
+
+        if (!firstMessageReceived) {
+            firstMessageReceived = true;
+            try {
+                const parsed = JSON.parse(msgStr);
+                const action = Array.isArray(parsed) && parsed[0] === 2 ? parsed[2] : 'unknown';
+                logger('INFO', 'First message from charger', {
+                    chargePointId,
+                    action,
+                    csmsState: csmsSocket ? csmsSocket.readyState : 'null',
+                    csmsStateLabel: csmsSocket ? ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][csmsSocket.readyState] : 'null'
+                });
+            } catch (e) {
+                logger('WARNING', 'First message not valid JSON', { chargePointId, message: msgStr });
+            }
+        }
+
         if (DEBUG) logger('DEBUG', 'CHARGER → PROXY', { chargePointId, message: msgStr });
 
         let shouldForward = true;
@@ -459,6 +580,16 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
             if (csmsSocket && csmsSocket.readyState === WebSocket.OPEN) {
                 if (DEBUG) logger('DEBUG', 'PROXY → CSMS', { chargePointId, message: msgStr });
                 csmsSocket.send(msgStr);
+            } else if (csmsSocket && csmsSocket.readyState === WebSocket.CONNECTING) {
+                // Buffer messages while CSMS is connecting
+                const connection = clients.get(chargePointId);
+                if (connection) {
+                    connection.messageBuffer.push(msgStr);
+                    logger('INFO', 'Buffering message while CSMS connects', {
+                        chargePointId,
+                        bufferSize: connection.messageBuffer.length
+                    });
+                }
             } else {
                 logger('WARNING', 'CSMS unavailable, message not forwarded', { chargePointId });
             }
@@ -475,57 +606,15 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
             logger('ERROR', 'Failed to update charger status on disconnect', { chargePointId, error: err.message });
         }
 
-        if (csmsSocket) csmsSocket.close();
+        // Close CSMS connection and mark for cleanup
+        const connection = clients.get(chargePointId);
+        if (connection && connection.csmsSocket) {
+            connection.csmsSocket.close();
+            connection.csmsSocket = null;
+        }
         clients.delete(chargePointId);
     });
 
-    // --- FROM CSMS (Downstream) ---
-    if (csmsSocket) {
-        csmsSocket.on('open', () => {
-            logger('INFO', 'CSMS connected successfully', { chargePointId });
-        });
-
-        csmsSocket.on('message', async (message) => {
-            const msgStr = message.toString();
-            if (DEBUG) logger('DEBUG', 'CSMS → PROXY', { chargePointId, message: msgStr });
-
-            try {
-                const parsed = JSON.parse(msgStr);
-                if (Array.isArray(parsed) && parsed[0] === 4) {
-                    logger('ERROR', 'CSMS error response', { chargePointId, response: parsed });
-                }
-            } catch (e) {
-                // Not JSON, just forward
-            }
-
-            logMessage(chargePointId, 'DOWNSTREAM', msgStr);
-            if (chargerSocket.readyState === WebSocket.OPEN) {
-                if (DEBUG) logger('DEBUG', 'PROXY → CHARGER', { chargePointId, message: msgStr });
-                chargerSocket.send(msgStr);
-            } else {
-                logger('WARNING', 'Charger disconnected, cannot forward CSMS message', { chargePointId });
-            }
-        });
-
-        csmsSocket.on('close', (code, reason) => {
-            logger('INFO', 'CSMS disconnected', { chargePointId, code, reason: reason || 'None' });
-            const connection = clients.get(chargePointId);
-            if (connection) connection.csmsSocket = null;
-        });
-
-        csmsSocket.on('error', (err) => {
-            logger('ERROR', 'CSMS error', {
-                chargePointId,
-                error: err.message,
-                code: err.code,
-                stack: DEBUG ? err.stack : undefined
-            });
-            const connection = clients.get(chargePointId);
-            if (connection) connection.csmsSocket = null;
-        });
-    } else {
-        logger('INFO', 'Charger connected in standalone mode (CSMS unavailable)', { chargePointId });
-    }
 });
 
 // Helper: Database message logging
