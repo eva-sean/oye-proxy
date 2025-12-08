@@ -48,7 +48,7 @@ The easiest way to get started is using the provided setup script:
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-username/oye-proxy.git
+   git clone https://github.com/eva-sean/oye-proxy.git
    cd oye-proxy
    ```
 

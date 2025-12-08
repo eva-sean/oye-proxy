@@ -587,4 +587,4 @@ This is ideal for:
 
 ## Support
 
-For issues or questions, check the project repository at https://github.com/your-username/oye-proxy or review logs in `data/logs/`.
+For issues or questions, check the project repository at https://github.com/eva-sean/oye-proxy or review logs in `data/logs/`.
