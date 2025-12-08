@@ -1,6 +1,6 @@
 {
   "name": "oye-proxy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A transparent, serverless \"Man-in-the-Middle\" proxy for the Open Charge Point Protocol (OCPP).",
   "keywords": [
     "ocpp",
