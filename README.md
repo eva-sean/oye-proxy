@@ -468,6 +468,10 @@ Common issues:
 2. **SQLite Concurrency:** Limited write concurrency (uses WAL mode for better performance).
 3. **In-Memory ID Tracking:** Restarting the server loses pending injection IDs.
 
+## Acknowledgments
+
+This project was developed with assistance from [Claude](https://claude.ai), an AI assistant by Anthropic.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
