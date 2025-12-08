@@ -1,7 +1,7 @@
 {
   "name": "oye-proxy",
   "version": "1.0.0",
-  "description": "A transparent, serverless \"Man-in-the-Middle\" proxy for the Open Charge Point Protocol (OCPP).",
+  "description": "Own Your EVSE - A transparent OCPP proxy with real-time monitoring, automatic charging capabilities, and independent EVSE control.",
   "keywords": [
     "ocpp",
     "evse",
