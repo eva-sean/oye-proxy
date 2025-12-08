@@ -259,7 +259,9 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
     let csmsSocket = null;
 
     if (CSMS_FORWARDING_ENABLED) {
-        const csmsTarget = `${TARGET_CSMS_URL}${chargePointId}`;
+        const csmsTarget = TARGET_CSMS_URL.endsWith('/')
+            ? `${TARGET_CSMS_URL}${chargePointId}`
+            : `${TARGET_CSMS_URL}/${chargePointId}`;
 
         if (DEBUG) {
             logger('DEBUG', 'CSMS connection attempt', {
