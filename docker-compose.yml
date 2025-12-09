@@ -7,9 +7,9 @@ services:
       - "${PORT:-8080}:8080"
     volumes:
       # Persist database file only (not entire db/ directory)
-      - ./data/db:/app/data/db
+      - ${DATA_DIR:-./data}/db:/app/data/db
       # Persist logs
-      - ./data/logs:/app/logs
+      - ${DATA_DIR:-./data}/logs:/app/logs
       # Mount .env file (optional)
       - ./.env:/app/.env:ro
       # Mount public directory for instant frontend updates
