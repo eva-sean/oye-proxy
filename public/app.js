@@ -248,6 +248,17 @@ function setupEventListeners() {
             }
         }
 
+        // Edit configuration icon
+        if (e.target && (e.target.classList.contains('edit-config-icon') || e.target.closest('.edit-config-icon'))) {
+            const btn = e.target.classList.contains('edit-config-icon') ? e.target : e.target.closest('.edit-config-icon');
+            const chargerId = btn.dataset.chargerId;
+            const configKey = btn.dataset.configKey;
+            const configValue = btn.dataset.configValue;
+            if (chargerId && configKey) {
+                editConfigurationItem(chargerId, configKey, configValue);
+            }
+        }
+
         // Refresh connector status button
         if (e.target && e.target.classList.contains('refresh-connector-status')) {
             const chargerId = e.target.dataset.chargerId;
@@ -1312,7 +1323,21 @@ function displayChargerStatus(chargerId) {
         configData.configurationKey.sort((a, b) => (a.key || '').localeCompare(b.key || '')).forEach(item => {
             const readonly = item.readonly ? 'Yes' : 'No';
             const value = item.value !== undefined && item.value !== null ? escapeHtml(String(item.value)) : '<em style="color: var(--text-secondary);">empty</em>';
-            html += `<tr><td><strong>${escapeHtml(item.key)}</strong></td><td>${value}</td><td>${readonly}</td></tr>`;
+            const rawValue = item.value !== undefined && item.value !== null ? String(item.value) : '';
+
+            html += `<tr><td><strong>${escapeHtml(item.key)}</strong></td><td>`;
+            html += value;
+
+            // Add edit icon for non-readonly items
+            if (!item.readonly) {
+                html += ` <button class="edit-config-icon" data-charger-id="${chargerId}" data-config-key="${escapeHtml(item.key)}" data-config-value="${escapeHtml(rawValue)}" title="Edit configuration">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                        <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                    </svg>
+                </button>`;
+            }
+
+            html += `</td><td>${readonly}</td></tr>`;
         });
 
         html += '</tbody>';
@@ -1336,6 +1361,32 @@ function displayChargerStatus(chargerId) {
     html += '</div>'; // Close status-sections
 
     displayEl.innerHTML = html;
+}
+
+// Edit configuration item - switch to Inject Command tab with pre-filled values
+function editConfigurationItem(chargerId, configKey, configValue) {
+    // Switch to inject tab
+    switchTab('inject');
+
+    // Set the charger
+    document.getElementById('injectCharger').value = chargerId;
+
+    // Set the action to ChangeConfiguration
+    document.getElementById('ocppAction').value = 'ChangeConfiguration';
+
+    // Set the payload with the configuration key and current value
+    const payload = {
+        key: configKey,
+        value: configValue
+    };
+
+    document.getElementById('payloadEditor').value = JSON.stringify(payload, null, 2);
+
+    // Clear any previous result messages
+    document.getElementById('injectResult').className = 'inject-result';
+
+    // Scroll to top of page
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // Refresh configuration by injecting GetConfiguration command

@@ -880,6 +880,31 @@ h1 {
     font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
 }
 
+/* Edit config icon */
+.edit-config-icon {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+    vertical-align: middle;
+    margin-left: 0.5rem;
+}
+
+.edit-config-icon:hover {
+    background: var(--bg-light);
+    color: var(--primary);
+}
+
+.edit-config-icon svg {
+    display: block;
+}
+
 /* Modal */
 .modal {
     display: none;
