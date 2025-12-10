@@ -207,7 +207,32 @@ Invoke-WebRequest http://localhost:8080/health
 
 Expected response: `OCPP Proxy Active. Connected Chargers: 0`
 
-### 2. Test Command Injection
+### 2. Test with Emulated Charger
+
+A test charger emulator is included for development and testing without physical hardware:
+
+```bash
+# Start the proxy
+docker-compose up -d
+
+# In a separate terminal, run the test charger
+node scripts/test-charger.js
+
+# Custom charger ID and proxy URL
+CHARGE_POINT_ID=MY-CHARGER PROXY_URL=ws://192.168.1.100:8080 node scripts/test-charger.js
+```
+
+The emulator:
+- Connects to the proxy via WebSocket
+- Sends BootNotification and periodic Heartbeats
+- Responds to all common OCPP commands (GetConfiguration, RemoteStartTransaction, RemoteStopTransaction, Reset, etc.)
+- Returns realistic configuration values
+- Logs all activity to console
+- Auto-reconnects on disconnect
+
+Use the web dashboard or REST API to send commands to the test charger and verify the proxy is working correctly.
+
+### 3. Test Command Injection
 
 Once you have a charger connected to `ws://localhost:8080/ocpp/{chargePointId}`:
 
@@ -232,7 +257,7 @@ Expected response:
 }
 ```
 
-### 3. Monitor Logs
+### 4. Monitor Logs
 
 Check the database to verify messages are being logged:
 
