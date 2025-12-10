@@ -40,6 +40,30 @@ function addUser(db, username, password) {
     console.log(`User '${username}' added/updated`);
 }
 
+function generateRandomPassword(length = 16) {
+    return crypto.randomBytes(length).toString('base64').slice(0, length);
+}
+
+function ensureDefaultUser(db) {
+    const checkAnyUser = db.prepare('SELECT COUNT(*) as count FROM auth_users');
+    const result = checkAnyUser.get();
+
+    if (result.count === 0) {
+        const randomPassword = generateRandomPassword();
+        addUser(db, 'admin', randomPassword);
+        console.log('='.repeat(60));
+        console.log('DEFAULT ADMIN USER CREATED');
+        console.log('='.repeat(60));
+        console.log(`Username: admin`);
+        console.log(`Password: ${randomPassword}`);
+        console.log('='.repeat(60));
+        console.log('IMPORTANT: Change this password immediately via the web UI or API!');
+        console.log('='.repeat(60));
+        return randomPassword;
+    }
+    return null;
+}
+
 // CLI usage: node init.js [username] [password]
 if (require.main === module) {
     const db = initDatabase();
@@ -48,9 +72,12 @@ if (require.main === module) {
     const [username, password] = process.argv.slice(2);
     if (username && password) {
         addUser(db, username, password);
+    } else {
+        // Ensure default admin user exists if no users
+        ensureDefaultUser(db);
     }
 
     db.close();
 }
 
-module.exports = { initDatabase, hashPassword, addUser };
+module.exports = { initDatabase, hashPassword, addUser, ensureDefaultUser };

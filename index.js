@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const path = require('path');
 const DatabaseAdapter = require('./db/adapter');
 const logger = require('./logger');
-const { createAuthMiddleware } = require('./auth');
+const { createAuthMiddleware, hashPassword } = require('./auth');
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'db/oye-proxy.db');
 const PORT = process.env.PORT || 8080;
@@ -214,6 +214,43 @@ app.post('/api/inject/:cpId', requireAuth, async (req, res) => {
         return res.json({ status: 'sent', messageId: messageId });
     } catch (e) {
         logger('ERROR', 'Injection failed', { chargePointId: cpId, error: e.message });
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// Change password endpoint
+app.post('/api/change-password', requireAuth, async (req, res) => {
+    if (DEBUG) { logger('DEBUG', 'POST request', {url: req.url} )};
+    const { currentPassword, newPassword } = req.body;
+    const username = req.user.username;
+
+    if (!currentPassword || !newPassword) {
+        return res.status(400).json({ error: 'Current password and new password are required' });
+    }
+
+    if (newPassword.length < 8) {
+        return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+    }
+
+    try {
+        // Verify current password
+        const user = await db.getUser(username);
+        if (!user || user.password_hash !== hashPassword(currentPassword)) {
+            return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+
+        // Update password
+        const newPasswordHash = hashPassword(newPassword);
+        const success = await db.updatePassword(username, newPasswordHash);
+
+        if (success) {
+            logger('INFO', 'Password changed successfully', { username });
+            return res.json({ status: 'success', message: 'Password changed successfully' });
+        } else {
+            return res.status(500).json({ error: 'Failed to update password' });
+        }
+    } catch (e) {
+        logger('ERROR', 'Password change failed', { username, error: e.message });
         return res.status(500).json({ error: e.message });
     }
 });

@@ -79,29 +79,56 @@ docker-compose logs -f
 
 ## Initial Setup
 
-### 1. Create Admin User
+### 1. Default Admin Account
+
+**On first run, the proxy automatically creates a default admin account with a random password.**
+
+To find the auto-generated password:
+
+```bash
+# Check the container logs
+docker-compose logs | grep "DEFAULT ADMIN USER"
+```
+
+You'll see output like:
+```
+============================================================
+DEFAULT ADMIN USER CREATED
+============================================================
+Username: admin
+Password: Xy9k2Lm4Np8qRtVw
+============================================================
+IMPORTANT: Change this password immediately via the web UI or API!
+============================================================
+```
+
+**Important:** Change the default password immediately after first login using the web dashboard (click on username → Change Password).
+
+### 2. Create Additional Users (Optional)
+
+To manually create additional users:
 
 ```bash
 # Enter the container
 docker exec -it oye-proxy sh
 
 # Add a user (replace username and password)
-node db/init.js admin yourpassword
+node db/init.js newuser yourpassword
 
 # Exit container
 exit
 ```
 
-### 2. Access the Dashboard
+### 3. Access the Dashboard
 
 Open your browser and navigate to:
 ```
 http://your-server-ip:8080
 ```
 
-Login with the credentials you created above.
+Login with the default admin credentials shown in the logs (or your custom credentials if you created a user manually).
 
-### 3. Configure Proxy Settings
+### 4. Configure Proxy Settings
 
 In the dashboard:
 1. Click the config icon (gear)
@@ -174,13 +201,7 @@ LOG_RETENTION_COUNT=1000
 mkdir -p data/db data/logs
 ```
 
-### 6. Create Admin User
-
-```bash
-node db/init.js admin yourpassword
-```
-
-### 7. Start the Proxy
+### 6. Start the Proxy
 
 ```bash
 # Run directly
@@ -196,16 +217,52 @@ pm2 save
 pm2 startup  # Follow instructions to enable auto-start on boot
 ```
 
-### 8. Access the Dashboard
+### 7. Default Admin Account
+
+**On first run, the proxy automatically creates a default admin account with a random password.**
+
+To find the auto-generated password:
+
+```bash
+# Check the logs
+tail -n 100 logs/oye-proxy.log | grep "DEFAULT ADMIN USER" -A 8
+
+# Or if using PM2
+pm2 logs oye-proxy | grep "DEFAULT ADMIN USER"
+```
+
+You'll see output like:
+```
+============================================================
+DEFAULT ADMIN USER CREATED
+============================================================
+Username: admin
+Password: Xy9k2Lm4Np8qRtVw
+============================================================
+IMPORTANT: Change this password immediately via the web UI or API!
+============================================================
+```
+
+**Important:** Change the default password immediately after first login using the web dashboard (click on username → Change Password).
+
+### 8. Create Additional Users (Optional)
+
+To manually create additional users:
+
+```bash
+node db/init.js newuser yourpassword
+```
+
+### 9. Access the Dashboard
 
 Open your browser and navigate to:
 ```
 http://your-server-ip:8080
 ```
 
-Login with the credentials you created above.
+Login with the default admin credentials shown in the logs (or your custom credentials if you created a user manually).
 
-### 9. Configure Proxy Settings
+### 10. Configure Proxy Settings
 
 Same as Docker deployment - use the web dashboard to configure CSMS URL, forwarding, and auto-charging options.
 
@@ -560,12 +617,13 @@ wget -qO- http://localhost:8080/
 
 ## Security Recommendations
 
-1. **Change default credentials immediately**
-2. **Use strong passwords** (minimum 16 characters)
+1. **Change the auto-generated admin password immediately** after first login (click username → Change Password in the web dashboard)
+2. **Use strong passwords** (minimum 8 characters required, 16+ recommended)
 3. **Set up nginx** with SSL/TLS for production
 4. **Limit port access** to known charger IPs
 5. **Regular backups** of the database
 6. **Monitor logs** for unauthorized access attempts
+7. **Delete or disable unused user accounts**
 
 ## Features Specific to Deployment
 

@@ -69,17 +69,27 @@ The easiest way to get started is using the provided setup script:
    - Check for Docker and Docker Compose
    - Create data directories
    - Build the Docker image
-   - Prompt you to create an admin user
+   - Prompt you to create an admin user (or auto-generate one)
    - Start the proxy server
 
-3. **Access the dashboard:**
+3. **Get your login credentials:**
+
+   If you didn't create a user during setup, the proxy automatically generates a default admin account. Check the logs for the password:
+
+   ```bash
+   docker-compose logs | grep "DEFAULT ADMIN USER"
+   ```
+
+4. **Access the dashboard:**
 
    Open your browser and navigate to:
    ```
    http://localhost:8080
    ```
 
-   Login with the credentials you created during setup.
+   Login with the credentials you created during setup (or the auto-generated admin credentials from the logs).
+
+   **Important:** If using the auto-generated password, change it immediately by clicking on your username → Change Password.
 
 The server is now running:
 - **Proxy Server:** `http://localhost:8080`
@@ -98,6 +108,11 @@ cp .env.example .env
 mkdir -p data/db data/logs
 docker-compose build
 docker-compose up -d
+
+# Check logs for auto-generated admin password
+docker-compose logs | grep "DEFAULT ADMIN USER"
+
+# Or manually create a user (optional)
 docker exec -it oye-proxy node db/init.js admin yourpassword
 ```
 
@@ -108,8 +123,15 @@ Copy-Item .env.example .env
 New-Item -ItemType Directory -Force -Path "data\db","data\logs"
 docker-compose build
 docker-compose up -d
+
+# Check logs for auto-generated admin password
+docker-compose logs | Select-String "DEFAULT ADMIN USER"
+
+# Or manually create a user (optional)
 docker exec -it oye-proxy node db/init.js admin yourpassword
 ```
+
+**Note:** On first run, if no users exist, the proxy automatically creates an admin account with a random password displayed in the logs. Change this password immediately after first login.
 
 ## Configuration
 
@@ -283,7 +305,7 @@ The proxy includes a real-time web dashboard for monitoring and controlling char
 
 ### Access
 
-Navigate to `http://localhost:8080` in your browser. On first visit, you'll be prompted to log in with credentials created during setup.
+Navigate to `http://localhost:8080` in your browser. On first visit, you'll be prompted to log in with credentials created during setup (or the auto-generated admin credentials if no user was created).
 
 ## API Reference
 
@@ -455,12 +477,13 @@ Common issues:
 
 ## Security
 
-- Change default credentials immediately
-- Use strong passwords (minimum 16 characters)
+- **Change auto-generated admin password immediately** after first login (username dropdown → Change Password)
+- Use strong passwords (minimum 8 characters required, 16+ recommended)
 - Set up nginx with SSL/TLS for production
 - Limit port access to known charger IPs
 - Regular backups of the database
 - Monitor logs for unauthorized access
+- Delete or disable unused user accounts
 
 ## Limitations
 

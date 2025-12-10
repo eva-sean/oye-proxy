@@ -1,11 +1,15 @@
 // Database adapter - replaces Firestore calls
 const Database = require('better-sqlite3');
 const path = require('path');
+const { ensureDefaultUser } = require('./init');
 
 class DatabaseAdapter {
     constructor(dbPath) {
         this.db = new Database(dbPath || path.join(__dirname, 'oye-proxy.db'));
         this.db.pragma('journal_mode = WAL');
+
+        // Ensure default admin user exists if no users
+        ensureDefaultUser(this.db);
 
         // Prepare statements for performance
         this.stmts = {
@@ -62,7 +66,8 @@ class DatabaseAdapter {
             getAllChargers: this.db.prepare('SELECT * FROM chargers'),
 
             // Auth
-            getUser: this.db.prepare('SELECT * FROM auth_users WHERE username = ?')
+            getUser: this.db.prepare('SELECT * FROM auth_users WHERE username = ?'),
+            updatePassword: this.db.prepare('UPDATE auth_users SET password_hash = ? WHERE username = ?')
         };
     }
 
@@ -121,6 +126,11 @@ class DatabaseAdapter {
     // Auth methods
     async getUser(username) {
         return this.stmts.getUser.get(username);
+    }
+
+    async updatePassword(username, passwordHash) {
+        const result = this.stmts.updatePassword.run(passwordHash, username);
+        return result.changes > 0;
     }
 
     // Cleanup method (replaces Firebase Function)
