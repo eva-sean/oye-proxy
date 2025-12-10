@@ -48,7 +48,17 @@ const API = {
         }
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            // Try to parse error message from response
+            try {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+            } catch (e) {
+                // If JSON parsing fails, use status text
+                if (e.message && !e.message.startsWith('HTTP')) {
+                    throw e; // Re-throw the error we created above
+                }
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
         }
 
         return response.json();
@@ -96,8 +106,28 @@ function updateUserInfo(user) {
     const header = document.querySelector('header');
     const userInfoHtml = `
         <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
-            <span style="font-size: 0.875rem; color: var(--text-secondary);">${user.username}</span>
-            <button id="logoutBtn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Sign Out</button>
+            <div class="user-menu-container">
+                <button id="userMenuBtn" class="user-menu-btn">
+                    <span>${user.username}</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div id="userDropdown" class="user-dropdown">
+                    <button id="changePasswordMenuBtn" class="dropdown-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                        </svg>
+                        Change Password
+                    </button>
+                    <button id="logoutMenuBtn" class="dropdown-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px;">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                        Sign Out
+                    </button>
+                </div>
+            </div>
             <button id="configIconBtn" class="config-icon-btn" title="Proxy Configuration">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
@@ -120,8 +150,30 @@ function updateUserInfo(user) {
         openConfigModal();
     });
 
+    // Add user menu toggle handler
+    const userMenuBtn = document.getElementById('userMenuBtn');
+    const userDropdown = document.getElementById('userDropdown');
+
+    userMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        userDropdown.classList.toggle('show');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.user-menu-container')) {
+            userDropdown.classList.remove('show');
+        }
+    });
+
+    // Add change password handler
+    document.getElementById('changePasswordMenuBtn').addEventListener('click', () => {
+        userDropdown.classList.remove('show');
+        openPasswordModal();
+    });
+
     // Add logout handler
-    document.getElementById('logoutBtn').addEventListener('click', async () => {
+    document.getElementById('logoutMenuBtn').addEventListener('click', async () => {
         try {
             localStorage.removeItem('authToken');
             localStorage.removeItem('username');
@@ -227,6 +279,10 @@ function setupEventListeners() {
     document.getElementById('saveConfigBtn').addEventListener('click', saveProxyConfig);
     document.getElementById('reloadConfigBtn').addEventListener('click', loadProxyConfig);
 
+    // Password change modal
+    document.getElementById('changePasswordBtn').addEventListener('click', changePassword);
+    document.getElementById('closePasswordModal').addEventListener('click', closePasswordModal);
+
     // Modal controls
     document.getElementById('closeConfigModal').addEventListener('click', closeConfigModal);
 
@@ -237,10 +293,17 @@ function setupEventListeners() {
         }
     });
 
-    // Close modal on Escape key
+    document.getElementById('passwordModal').addEventListener('click', (e) => {
+        if (e.target.id === 'passwordModal') {
+            closePasswordModal();
+        }
+    });
+
+    // Close modals on Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeConfigModal();
+            closePasswordModal();
         }
     });
 }
@@ -1539,6 +1602,78 @@ function closeConfigModal() {
     // Clear any result messages
     const resultEl = document.getElementById('configResult');
     resultEl.className = 'config-result';
+}
+
+// Open password modal
+function openPasswordModal() {
+    const modal = document.getElementById('passwordModal');
+    modal.classList.add('show');
+}
+
+// Close password modal
+function closePasswordModal() {
+    const modal = document.getElementById('passwordModal');
+    modal.classList.remove('show');
+    // Clear any result messages
+    const passwordResultEl = document.getElementById('passwordResult');
+    passwordResultEl.className = 'password-result';
+    // Clear password fields
+    document.getElementById('currentPassword').value = '';
+    document.getElementById('newPassword').value = '';
+    document.getElementById('confirmPassword').value = '';
+}
+
+// Change password
+async function changePassword() {
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        showPasswordResult('Please fill in all password fields', false);
+        return;
+    }
+
+    if (newPassword.length < 8) {
+        showPasswordResult('New password must be at least 8 characters long', false);
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        showPasswordResult('New passwords do not match', false);
+        return;
+    }
+
+    try {
+        await API.post('/api/change-password', {
+            currentPassword: currentPassword,
+            newPassword: newPassword
+        });
+
+        showPasswordResult('Password changed successfully!', true);
+
+        // Clear password fields
+        document.getElementById('currentPassword').value = '';
+        document.getElementById('newPassword').value = '';
+        document.getElementById('confirmPassword').value = '';
+
+    } catch (error) {
+        console.error('Error changing password:', error);
+        showPasswordResult(error.message, false);
+    }
+}
+
+// Show password result message
+function showPasswordResult(message, success) {
+    const resultEl = document.getElementById('passwordResult');
+    resultEl.textContent = message;
+    resultEl.className = 'password-result ' + (success ? 'success' : 'error');
+
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        resultEl.className = 'password-result';
+    }, 5000);
 }
 
 // Initialize when DOM is ready

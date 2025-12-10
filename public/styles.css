@@ -519,6 +519,7 @@ h1 {
 
 .form-group select,
 .form-group input[type="text"],
+.form-group input[type="password"],
 .form-group textarea {
     width: 100%;
     padding: 0.75rem;
@@ -535,6 +536,7 @@ h1 {
 
 .form-group select:focus,
 .form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus,
 .form-group textarea:focus {
     outline: none;
     border-color: var(--primary);
@@ -1018,4 +1020,105 @@ h1 {
         width: 95%;
         max-height: 95vh;
     }
+}
+
+/* User menu dropdown */
+.user-menu-container {
+    position: relative;
+}
+
+.user-menu-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-light);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.user-menu-btn:hover {
+    background: var(--bg-medium);
+    border-color: var(--primary);
+}
+
+.user-dropdown {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    background: var(--bg-medium);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    min-width: 180px;
+    display: none;
+    z-index: 1000;
+}
+
+.user-dropdown.show {
+    display: block;
+}
+
+.dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-align: left;
+}
+
+.dropdown-item:first-child {
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.dropdown-item:last-child {
+    border-radius: 0 0 0.5rem 0.5rem;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-light);
+}
+
+.dropdown-item svg {
+    flex-shrink: 0;
+}
+
+/* Result messages */
+.config-result,
+.password-result,
+.inject-result {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    display: none;
+}
+
+.config-result.success,
+.password-result.success,
+.inject-result.success {
+    display: block;
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.config-result.error,
+.password-result.error,
+.inject-result.error {
+    display: block;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+    border: 1px solid var(--danger);
 }
