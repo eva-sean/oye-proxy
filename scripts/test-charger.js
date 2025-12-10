@@ -14,7 +14,8 @@ const chargerState = {
   connectorId: 1,
   meterValue: 0,
   currentTransaction: null,
-  idTag: null
+  idTag: null,
+  meterValueInterval: null
 };
 
 // Configuration items (OCPP 1.6J standard)
@@ -28,7 +29,7 @@ const configurationKeys = {
   'LocalPreAuthorize': { value: 'false', readonly: false },
   'MeterValuesAlignedData': { value: 'Energy.Active.Import.Register', readonly: false },
   'MeterValuesSampledData': { value: 'Energy.Active.Import.Register', readonly: false },
-  'MeterValueSampleInterval': { value: '60', readonly: false },
+  'MeterValueSampleInterval': { value: '10', readonly: false },
   'NumberOfConnectors': { value: '1', readonly: true },
   'ResetRetries': { value: '3', readonly: false },
   'StopTransactionOnEVSideDisconnect': { value: 'true', readonly: false },
@@ -197,6 +198,7 @@ function handleRemoteStartTransaction(ws, messageId, payload) {
   chargerState.status = 'Charging';
   chargerState.idTag = idTag;
   chargerState.currentTransaction = Math.floor(Math.random() * 1000000);
+  chargerState.meterValue = 0; // Reset meter at start of transaction
 
   log('INFO', `Starting transaction ${chargerState.currentTransaction} for ${idTag} on connector ${connectorId}`);
   sendMessage(ws, 3, messageId, { status: 'Accepted' });
@@ -210,6 +212,9 @@ function handleRemoteStartTransaction(ws, messageId, payload) {
       status: 'Charging'
     });
   }, 500);
+
+  // Start sending meter values
+  startMeterValues(ws);
 }
 
 function handleRemoteStopTransaction(ws, messageId, payload) {
@@ -219,6 +224,9 @@ function handleRemoteStopTransaction(ws, messageId, payload) {
     sendMessage(ws, 3, messageId, { status: 'Rejected' });
     return;
   }
+
+  // Stop meter values
+  stopMeterValues();
 
   chargerState.status = 'Available';
   chargerState.currentTransaction = null;
@@ -242,6 +250,9 @@ function handleReset(ws, messageId, payload) {
   const { type } = payload;
   log('INFO', `Reset requested: ${type}`);
   sendMessage(ws, 3, messageId, { status: 'Accepted' });
+
+  // Stop meter values if running
+  stopMeterValues();
 
   // In a real charger, this would trigger a reboot
   // For testing, we just reset state
@@ -306,6 +317,77 @@ function sendBootNotification(ws) {
 
   log('INFO', 'Sending BootNotification');
   sendMessage(ws, 2, messageId, 'BootNotification', payload);
+}
+
+function sendMeterValues(ws) {
+  if (!chargerState.currentTransaction) {
+    return;
+  }
+
+  // Simulate realistic charging: increment by 0.5-2.0 kWh per minute
+  const increment = Math.random() * 1.5 + 0.5;
+  chargerState.meterValue += increment;
+
+  // Simulate realistic voltage and current for Level 2 charging
+  const voltage = 230 + (Math.random() * 10 - 5); // 225-235V
+  const current = 16 + (Math.random() * 16); // 16-32A
+
+  const messageId = generateMessageId();
+  const payload = {
+    connectorId: chargerState.connectorId,
+    transactionId: chargerState.currentTransaction,
+    meterValue: [
+      {
+        timestamp: new Date().toISOString(),
+        sampledValue: [
+          {
+            value: chargerState.meterValue.toFixed(2),
+            context: 'Sample.Periodic',
+            format: 'Raw',
+            measurand: 'Energy.Active.Import.Register',
+            unit: 'Wh'
+          },
+          {
+            value: voltage.toFixed(1),
+            context: 'Sample.Periodic',
+            format: 'Raw',
+            measurand: 'Voltage',
+            unit: 'V'
+          },
+          {
+            value: current.toFixed(1),
+            context: 'Sample.Periodic',
+            format: 'Raw',
+            measurand: 'Current.Import',
+            unit: 'A'
+          }
+        ]
+      }
+    ]
+  };
+
+  log('INFO', `Sending MeterValues: ${chargerState.meterValue.toFixed(2)} Wh, ${voltage.toFixed(1)}V, ${current.toFixed(1)}A`);
+  sendMessage(ws, 2, messageId, 'MeterValues', payload);
+}
+
+function startMeterValues(ws) {
+  // Use the configured interval from configuration
+  const interval = parseInt(configurationKeys['MeterValueSampleInterval'].value) * 1000;
+
+  if (chargerState.meterValueInterval) {
+    clearInterval(chargerState.meterValueInterval);
+  }
+
+  chargerState.meterValueInterval = setInterval(() => {
+    sendMeterValues(ws);
+  }, interval);
+}
+
+function stopMeterValues() {
+  if (chargerState.meterValueInterval) {
+    clearInterval(chargerState.meterValueInterval);
+    chargerState.meterValueInterval = null;
+  }
 }
 
 function startHeartbeat(ws) {
