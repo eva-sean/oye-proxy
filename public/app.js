@@ -1199,7 +1199,10 @@ function displayChargerStatus(chargerId) {
 
     // Overview Section
     html += '<div class="status-section">';
+    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
     html += '<h3>Overview</h3>';
+    html += `<button class="btn btn-secondary refresh-connector-status" data-charger-id="${chargerId}">Get Connector Status</button>`;
+    html += '</div>';
     html += '<div class="status-grid">';
     html += `<div class="status-item"><strong>Charger ID:</strong> ${chargerId}</div>`;
     html += `<div class="status-item"><strong>Last Seen:</strong> ${data.lastSeen ? formatTimestamp(data.lastSeen) : 'N/A'}</div>`;
@@ -1228,10 +1231,7 @@ function displayChargerStatus(chargerId) {
     const connectorIds = Object.keys(data.connectors).sort((a, b) => parseInt(a) - parseInt(b));
     if (connectorIds.length > 0) {
         html += '<div class="status-section">';
-        html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
         html += '<h3>Connector Status</h3>';
-        html += `<button class="btn btn-secondary refresh-connector-status" data-charger-id="${chargerId}">Refresh Status</button>`;
-        html += '</div>';
         connectorIds.forEach(connectorId => {
             const conn = data.connectors[connectorId];
             const statusClass = conn.status === 'Available' ? 'status-available' :
