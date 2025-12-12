@@ -1,83 +1,97 @@
 // Database initialization and migration
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const path = require('path');
+const DatabaseAdapter = require('./adapter');
 const crypto = require('crypto');
-
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'oye-proxy.db');
-const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
-
-function initDatabase() {
-    console.log(`Initializing database at: ${DB_PATH}`);
-
-    // Create db directory if it doesn't exist
-    const dbDir = path.dirname(DB_PATH);
-    if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true });
-    }
-
-    const db = new Database(DB_PATH);
-
-    // Enable WAL mode for better concurrency
-    db.pragma('journal_mode = WAL');
-
-    // Read and execute schema
-    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-    db.exec(schema);
-
-    console.log('Database initialized successfully');
-
-    return db;
-}
 
 function hashPassword(password) {
     return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-function addUser(db, username, password) {
-    const stmt = db.prepare('INSERT OR REPLACE INTO auth_users (username, password_hash) VALUES (?, ?)');
-    stmt.run(username, hashPassword(password));
-    console.log(`User '${username}' added/updated`);
 }
 
 function generateRandomPassword(length = 16) {
     return crypto.randomBytes(length).toString('base64').slice(0, length);
 }
 
-function ensureDefaultUser(db) {
-    const checkAnyUser = db.prepare('SELECT COUNT(*) as count FROM auth_users');
-    const result = checkAnyUser.get();
+async function init() {
+    console.log('Initializing database...');
+    const db = new DatabaseAdapter();
 
-    if (result.count === 0) {
-        const randomPassword = generateRandomPassword();
-        addUser(db, 'admin', randomPassword);
-        console.log('='.repeat(60));
-        console.log('DEFAULT ADMIN USER CREATED');
-        console.log('='.repeat(60));
-        console.log(`Username: admin`);
-        console.log(`Password: ${randomPassword}`);
-        console.log('='.repeat(60));
-        console.log('IMPORTANT: Change this password immediately via the web UI or API!');
-        console.log('='.repeat(60));
-        return randomPassword;
+    try {
+        // Run migrations
+        await db.runMigrations();
+
+        // Check for existing users
+        const count = await db.countUsers();
+
+        if (count === 0) {
+            console.log('No users found. Creating default admin user.');
+
+            let password;
+            let source;
+
+            if (process.env.INITIAL_ADMIN_PASSWORD) {
+                password = process.env.INITIAL_ADMIN_PASSWORD;
+                source = 'ENVIRONMENT VARIABLE';
+                console.log('Using password from INITIAL_ADMIN_PASSWORD environment variable.');
+            } else {
+                password = generateRandomPassword();
+                source = 'GENERATED';
+            }
+
+            const passwordHash = hashPassword(password);
+            await db.addUser('admin', passwordHash);
+
+            console.log('='.repeat(60));
+            console.log('DEFAULT ADMIN USER CREATED');
+            console.log('='.repeat(60));
+            console.log(`Username: admin`);
+            if (source === 'GENERATED') {
+                console.log(`Password: ${password}`);
+            } else {
+                console.log(`Password: (hidden - set via INITIAL_ADMIN_PASSWORD)`);
+            }
+            console.log('='.repeat(60));
+
+            if (source === 'GENERATED') {
+                console.log('IMPORTANT: Change this password immediately via the web UI or API!');
+                console.log('='.repeat(60));
+            }
+        } else {
+            console.log(`Database already initialized with ${count} users.`);
+        }
+
+    } catch (err) {
+        console.error('Initialization failed:', err);
+        process.exit(1);
+    } finally {
+        await db.close();
     }
-    return null;
 }
 
 // CLI usage: node init.js [username] [password]
 if (require.main === module) {
-    const db = initDatabase();
+    const args = process.argv.slice(2);
 
-    // Add user from command line args if provided
-    const [username, password] = process.argv.slice(2);
-    if (username && password) {
-        addUser(db, username, password);
+    if (args.length >= 2) {
+        // Manual add user mode
+        const [username, password] = args;
+        const db = new DatabaseAdapter();
+        (async () => {
+            try {
+                // Ensure migrations are run first just in case
+                await db.runMigrations();
+
+                await db.addUser(username, hashPassword(password));
+                console.log(`User '${username}' added/updated`);
+            } catch (err) {
+                console.error('Failed to add user:', err);
+                process.exit(1);
+            } finally {
+                await db.close();
+            }
+        })();
     } else {
-        // Ensure default admin user exists if no users
-        ensureDefaultUser(db);
+        // Default init mode
+        init();
     }
-
-    db.close();
 }
 
-module.exports = { initDatabase, hashPassword, addUser, ensureDefaultUser };
+module.exports = { hashPassword }; // Export helper if needed elsewhere

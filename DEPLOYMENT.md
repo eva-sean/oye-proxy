@@ -645,4 +645,71 @@ This is ideal for:
 
 ## Support
 
-For issues or questions, check the project repository at https://github.com/eva-sean/oye-proxy or review logs in `data/logs/`.
+
+---
+
+## Option 3: Google Cloud Run (Serverless)
+
+Deploying to Google Cloud Run allows the proxy to scale to zero when not in use and eliminates server maintenance. We use **Cloud SQL (PostgreSQL)** for persistence.
+
+### Prerequisites
+- Google Cloud Project
+- `gcloud` CLI installed and authenticated
+
+### 1. Setup Cloud SQL (PostgreSQL)
+
+1.  **Create an instance:**
+    ```bash
+    gcloud sql instances create oye-proxy-db \
+        --database-version=POSTGRES_15 \
+        --cpu=1 --memory=3840MiB \
+        --region=us-central1
+    ```
+
+2.  **Create database:**
+    ```bash
+    gcloud sql databases create oye_proxy --instance=oye-proxy-db
+    ```
+
+3.  **Create user:**
+    ```bash
+    gcloud sql users create oye_user \
+        --instance=oye-proxy-db \
+        --password=YOUR_SECURE_PASSWORD
+    ```
+
+### 2. Deploy to Cloud Run
+
+Run the following command to build and deploy. Replace `PROJECT_ID` and `YOUR_SECURE_PASSWORD` with your values.
+
+```bash
+# Set your project ID
+export PROJECT_ID=$(gcloud config get-value project)
+
+# 1. Build and push the image
+gcloud builds submit --tag gcr.io/$PROJECT_ID/oye-proxy
+
+# 2. Deploy
+gcloud run deploy oye-proxy \
+    --image gcr.io/$PROJECT_ID/oye-proxy \
+    --platform managed \
+    --region us-central1 \
+    --allow-unauthenticated \
+    --port 8080 \
+    --add-cloudsql-instances $PROJECT_ID:us-central1:oye-proxy-db \
+    --set-env-vars="NODE_ENV=production" \
+    --set-env-vars="DB_HOST=/cloudsql/$PROJECT_ID:us-central1:oye-proxy-db" \
+    --set-env-vars="DB_USER=oye_user" \
+    --set-env-vars="DB_PASSWORD=YOUR_SECURE_PASSWORD" \
+    --set-env-vars="DB_NAME=oye_proxy" \
+    --set-env-vars="INITIAL_ADMIN_PASSWORD=SuperSecretAdminPassword"
+```
+
+> **Note:** `INITIAL_ADMIN_PASSWORD` is used to set the default admin password on the first run.
+
+### 3. Verify Deployment
+
+1.  Get the service URL from the output.
+2.  Open the URL in your browser.
+3.  Login with user `admin` and the password you set in `INITIAL_ADMIN_PASSWORD`.
+

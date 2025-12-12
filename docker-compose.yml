@@ -19,9 +19,37 @@ services:
       - DEBUG=${DEBUG:-false}
       - DB_PATH=/app/data/db/oye-proxy.db
       - LOG_DIR=/app/logs
+      # Postgres Config (uncomment to use Postgres)
+      # - NODE_ENV=production
+      # - DB_HOST=db
+      # - DB_USER=postgres
+      # - DB_PASSWORD=password
+      # - DB_NAME=oye_proxy
+      # - INITIAL_ADMIN_PASSWORD=admin123
+    depends_on:
+      - db
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 5s
+
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: oye_proxy
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+

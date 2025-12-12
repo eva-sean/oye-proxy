@@ -1,157 +1,158 @@
-// Database adapter - replaces Firestore calls
-const Database = require('better-sqlite3');
+// Database adapter - replaces Firestore and raw SQLite calls
+const knex = require('knex');
 const path = require('path');
-const { ensureDefaultUser } = require('./init');
+const config = require('../knexfile');
+const logger = require('../logger');
 
 class DatabaseAdapter {
-    constructor(dbPath) {
-        this.db = new Database(dbPath || path.join(__dirname, 'oye-proxy.db'));
-        this.db.pragma('journal_mode = WAL');
+    constructor() {
+        const environment = process.env.NODE_ENV === 'production' ? 'production' : 'development';
+        const dbConfig = config[environment];
 
-        // Ensure default admin user exists if no users
-        ensureDefaultUser(this.db);
+        logger('INFO', `Initializing database adapter for environment: ${environment}`, {
+            client: dbConfig.client,
+            connection: environment === 'production' ? 'postgres (masked)' : dbConfig.connection.filename
+        });
 
-        // Prepare statements for performance
-        this.stmts = {
-            // Config
-            getConfig: this.db.prepare('SELECT value FROM config WHERE key = ?'),
-            setConfig: this.db.prepare('INSERT OR REPLACE INTO config (key, value, updated_at) VALUES (?, ?, ?)'),
-            getAllConfig: this.db.prepare('SELECT key, value FROM config'),
-
-            // Logs
-            insertLog: this.db.prepare(`
-                INSERT INTO logs (charge_point_id, direction, payload, timestamp)
-                VALUES (?, ?, ?, ?)
-            `),
-            getLogsByCharger: this.db.prepare(`
-                SELECT id, charge_point_id, direction, payload, timestamp
-                FROM logs
-                WHERE charge_point_id = ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-            `),
-            getAllLogs: this.db.prepare(`
-                SELECT id, charge_point_id, direction, payload, timestamp
-                FROM logs
-                ORDER BY timestamp DESC
-                LIMIT ?
-            `),
-            getLogsSince: this.db.prepare(`
-                SELECT id, charge_point_id, direction, payload, timestamp
-                FROM logs
-                WHERE timestamp > ?
-                ORDER BY timestamp DESC
-                LIMIT ?
-            `),
-            deleteOldLogs: this.db.prepare(`
-                DELETE FROM logs
-                WHERE id NOT IN (
-                    SELECT id FROM logs
-                    WHERE charge_point_id = ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                )
-                AND charge_point_id = ?
-            `),
-            getOldestLogTimestamp: this.db.prepare(`
-                SELECT MIN(timestamp) as oldest FROM logs
-            `),
-
-            // Chargers
-            updateCharger: this.db.prepare(`
-                INSERT OR REPLACE INTO chargers (charge_point_id, status, last_seen)
-                VALUES (?, ?, ?)
-            `),
-            getCharger: this.db.prepare('SELECT * FROM chargers WHERE charge_point_id = ?'),
-            getAllChargers: this.db.prepare('SELECT * FROM chargers'),
-
-            // Auth
-            getUser: this.db.prepare('SELECT * FROM auth_users WHERE username = ?'),
-            updatePassword: this.db.prepare('UPDATE auth_users SET password_hash = ? WHERE username = ?')
-        };
+        this.db = knex(dbConfig);
     }
 
-    // Config methods (replaces Firestore config/proxy document)
+    // Config methods
     async getConfigValue(key) {
-        const row = this.stmts.getConfig.get(key);
+        const row = await this.db('config').where('key', key).first();
         return row ? row.value : null;
     }
 
     async setConfigValue(key, value) {
         const now = Math.floor(Date.now() / 1000);
-        this.stmts.setConfig.run(key, value, now);
+        // SQLite supports INSERT OR REPLACE, Postgres uses ON CONFLICT
+        // Knex .insert().onConflict().merge() works for both
+        await this.db('config')
+            .insert({ key, value, updated_at: now })
+            .onConflict('key')
+            .merge();
     }
 
     async getAllConfig() {
-        const rows = this.stmts.getAllConfig.all();
+        const rows = await this.db('config').select('key', 'value');
         return rows.reduce((acc, row) => {
             acc[row.key] = row.value;
             return acc;
         }, {});
     }
 
-    // Log methods (replaces Firestore logs collection)
+    // Log methods
     async logMessage(chargePointId, direction, payload) {
         const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
         const timestamp = Math.floor(Date.now() / 1000);
-        this.stmts.insertLog.run(chargePointId, direction, payloadStr, timestamp);
+
+        await this.db('logs').insert({
+            charge_point_id: chargePointId,
+            direction,
+            payload: payloadStr,
+            timestamp
+        });
     }
 
     async getLogs(options = {}) {
         const limit = options.limit || 100;
+        let query = this.db('logs').select('id', 'charge_point_id', 'direction', 'payload', 'timestamp');
 
         if (options.chargePointId) {
-            return this.stmts.getLogsByCharger.all(options.chargePointId, limit);
+            query = query.where('charge_point_id', options.chargePointId);
         } else if (options.since) {
-            return this.stmts.getLogsSince.all(options.since, limit);
-        } else {
-            return this.stmts.getAllLogs.all(limit);
+            query = query.where('timestamp', '>', options.since);
         }
+
+        query = query.orderBy('timestamp', 'desc').limit(limit);
+
+        return await query;
     }
 
-    // Charger methods (replaces Firestore chargers collection)
+    // Charger methods
     async updateChargerStatus(chargePointId, status) {
         const lastSeen = Math.floor(Date.now() / 1000);
-        this.stmts.updateCharger.run(chargePointId, status, lastSeen);
+        await this.db('chargers')
+            .insert({ charge_point_id: chargePointId, status, last_seen: lastSeen })
+            .onConflict('charge_point_id')
+            .merge();
     }
 
     async getCharger(chargePointId) {
-        return this.stmts.getCharger.get(chargePointId);
+        return await this.db('chargers').where('charge_point_id', chargePointId).first();
     }
 
     async getAllChargers() {
-        return this.stmts.getAllChargers.all();
+        return await this.db('chargers').select('*');
     }
 
     // Auth methods
     async getUser(username) {
-        return this.stmts.getUser.get(username);
+        return await this.db('auth_users').where('username', username).first();
     }
 
     async updatePassword(username, passwordHash) {
-        const result = this.stmts.updatePassword.run(passwordHash, username);
-        return result.changes > 0;
+        const count = await this.db('auth_users')
+            .where('username', username)
+            .update({ password_hash: passwordHash });
+        return count > 0;
     }
 
-    // Cleanup method (replaces Firebase Function)
+    // Explicitly add a user (helper for init/scripts)
+    async addUser(username, passwordHash) {
+        const now = Math.floor(Date.now() / 1000);
+        await this.db('auth_users')
+            .insert({ username, password_hash: passwordHash, created_at: now })
+            .onConflict('username')
+            .merge();
+    }
+
+    async countUsers() {
+        const result = await this.db('auth_users').count('username as count').first();
+        // Knex response for count varies by dialect. 
+        // Postgres returns string for count, SQLite returns number.
+        // Safer to cast or parse.
+        return parseInt(result.count || 0);
+    }
+
+    // Cleanup method
     async cleanupOldLogs(retentionCount = 1000) {
         const chargers = await this.getAllChargers();
         let totalDeleted = 0;
 
         for (const charger of chargers) {
-            const result = this.stmts.deleteOldLogs.run(
-                charger.charge_point_id,
-                retentionCount,
-                charger.charge_point_id
-            );
-            totalDeleted += result.changes;
+            // Find the Nth newest log timestamp to use as cutoff
+            // This is slightly complex in pure SQL across dialects without window functions in older versions
+            // but subqueries are standard.
+
+            // Delete logs where id NOT IN (top N ids by timestamp) for this charger
+            // This matches the original logic
+            const subquery = this.db('logs')
+                .select('id')
+                .where('charge_point_id', charger.charge_point_id)
+                .orderBy('timestamp', 'desc')
+                .limit(retentionCount);
+
+            const count = await this.db('logs')
+                .where('charge_point_id', charger.charge_point_id)
+                .whereNotIn('id', subquery)
+                .del();
+
+            totalDeleted += count;
         }
 
         return totalDeleted;
     }
 
-    close() {
-        this.db.close();
+    // Migration helper
+    async runMigrations() {
+        logger('INFO', 'Running database migrations...');
+        await this.db.migrate.latest();
+        logger('INFO', 'Database migrations completed');
+    }
+
+    async close() {
+        await this.db.destroy();
     }
 }
 

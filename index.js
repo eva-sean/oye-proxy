@@ -17,7 +17,7 @@ const CSMS_RECONNECT_MAX_ATTEMPTS = parseInt(process.env.CSMS_RECONNECT_MAX_ATTE
 const CSMS_RECONNECT_BASE_DELAY = parseInt(process.env.CSMS_RECONNECT_BASE_DELAY) || 1000; // ms
 
 // Initialize database
-const db = new DatabaseAdapter(DB_PATH);
+const db = new DatabaseAdapter();
 
 const app = express();
 app.use(express.json());
@@ -67,7 +67,7 @@ app.use(express.static('public'));
 
 // Health check (no auth required)
 app.get('/health', (req, res) => {
-    if (DEBUG) { logger('DEBUG', 'Health check', {url: req.url} )};
+    if (DEBUG) { logger('DEBUG', 'Health check', { url: req.url }) };
     res.send(`OCPP Proxy Active. Connected Chargers: ${clients.size}`);
 });
 
@@ -106,8 +106,8 @@ app.get('/api/chargers', requireAuth, async (req, res) => {
         const enrichedChargers = chargers.map(charger => {
             const connection = clients.get(charger.charge_point_id);
             const isOnline = connection &&
-                            connection.chargerSocket &&
-                            connection.chargerSocket.readyState === WebSocket.OPEN;
+                connection.chargerSocket &&
+                connection.chargerSocket.readyState === WebSocket.OPEN;
 
             return {
                 ...charger,
@@ -168,7 +168,7 @@ app.post('/api/config', requireAuth, async (req, res) => {
 
 // Command injection
 app.post('/api/inject/:cpId', requireAuth, async (req, res) => {
-    if (DEBUG) { logger('DEBUG', 'POST request', {url: req.url} )};
+    if (DEBUG) { logger('DEBUG', 'POST request', { url: req.url }) };
     const { cpId } = req.params;
     const { action, payload } = req.body;
 
@@ -220,7 +220,7 @@ app.post('/api/inject/:cpId', requireAuth, async (req, res) => {
 
 // Change password endpoint
 app.post('/api/change-password', requireAuth, async (req, res) => {
-    if (DEBUG) { logger('DEBUG', 'POST request', {url: req.url} )};
+    if (DEBUG) { logger('DEBUG', 'POST request', { url: req.url }) };
     const { currentPassword, newPassword } = req.body;
     const username = req.user.username;
 
@@ -263,7 +263,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ noServer: true });
 
 server.on('upgrade', (request, socket, head) => {
-    if (DEBUG) { logger('DEBUG', 'Upgrade request', {url: request.url} )};
+    if (DEBUG) { logger('DEBUG', 'Upgrade request', { url: request.url }) };
     const urlParts = request.url.split('/');
     if (urlParts.length < 3 || urlParts[1] !== 'ocpp') {
         socket.write('HTTP/1.1 404 Not Found\r\n\r\n');

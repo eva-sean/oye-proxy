@@ -10,7 +10,7 @@ const RETENTION_COUNT = parseInt(process.env.LOG_RETENTION_COUNT || '1000', 10);
 async function cleanup() {
     logger('INFO', 'Starting log cleanup...', { retentionCount: RETENTION_COUNT });
 
-    const db = new DatabaseAdapter(DB_PATH);
+    const db = new DatabaseAdapter();
 
     try {
         const deletedCount = await db.cleanupOldLogs(RETENTION_COUNT);
