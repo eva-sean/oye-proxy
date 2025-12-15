@@ -29,7 +29,7 @@ The proxy operates as a single-instance Node.js application running in Docker. I
 ## Tech Stack
 
 - **Runtime:** Node.js (Express + `ws`)
-- **Database:** SQLite with WAL mode
+- **Database:** SQLite (local default) or PostgreSQL (production/cloud)
 - **Infrastructure:** Docker + Docker Compose
 - **Protocols:** OCPP 1.6J / 2.0.1 (WebSocket)
 - **Frontend:** Vanilla JavaScript (polling-based)
@@ -263,6 +263,7 @@ Check the database to verify messages are being logged:
 
 ```bash
 sqlite3 data/db/oye-proxy.db "SELECT * FROM logs ORDER BY timestamp DESC LIMIT 10;"
+(For PostgreSQL, use psql or your preferred client)
 ```
 
 Or use the web dashboard to see real-time message flow with these directions:
@@ -411,7 +412,7 @@ Content-Type: application/json
 }
 ```
 
-## Data Model (SQLite)
+## Data Model
 
 ### Table: `logs`
 

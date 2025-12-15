@@ -1,36 +1,36 @@
 {
-  "name": "oye-proxy",
-  "version": "1.0.0",
-  "description": "Own Your EVSE - A transparent OCPP proxy with real-time monitoring, automatic charging capabilities, and independent EVSE control.",
-  "keywords": [
-    "ocpp",
-    "evse",
-    "proxy"
-  ],
-  "license": "MIT",
-  "author": "Sean Hart, EV Angels Inc.",
-  "type": "commonjs",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js",
-    "init-db": "node db/init.js",
-    "add-user": "node db/init.js",
-    "cleanup": "node scripts/cleanup.js",
-    "docker:build": "docker-compose build",
-    "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down",
-    "docker:restart": "docker-compose restart",
-    "docker:rebuild": "docker-compose up -d --build",
-    "docker:logs": "docker-compose logs -f",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.7.0",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "knex": "^3.1.0",
-    "pg": "^8.16.3",
-    "sqlite3": "^5.1.7",
-    "ws": "^8.18.3"
-  }
+    "name": "oye-proxy",
+    "version": "1.1.0",
+    "description": "Own Your EVSE - A transparent OCPP proxy with real-time monitoring, automatic charging capabilities, and independent EVSE control.",
+    "keywords": [
+        "ocpp",
+        "evse",
+        "proxy"
+    ],
+    "license": "MIT",
+    "author": "Sean Hart, EV Angels Inc.",
+    "type": "commonjs",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "init-db": "node db/init.js",
+        "add-user": "node db/init.js",
+        "cleanup": "node scripts/cleanup.js",
+        "docker:build": "docker-compose build",
+        "docker:up": "docker-compose up -d",
+        "docker:down": "docker-compose down",
+        "docker:restart": "docker-compose restart",
+        "docker:rebuild": "docker-compose up -d --build",
+        "docker:logs": "docker-compose logs -f",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "dependencies": {
+        "better-sqlite3": "^11.7.0",
+        "dotenv": "^17.2.3",
+        "express": "^5.1.0",
+        "knex": "^3.1.0",
+        "pg": "^8.16.3",
+        "sqlite3": "^5.1.7",
+        "ws": "^8.18.3"
+    }
 }
