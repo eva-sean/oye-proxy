@@ -17,53 +17,73 @@ The OYE Proxy allows you to control power management features (Smart Charging) o
         curl -X POST http://localhost:8080/api/inject/{chargePointId} ... -d '{ "action": "ChangeConfiguration", "payload": { "key": "ScheduledMode", "value": "1" } }'
         ```
 
-## 2. Understanding Charging Profiles
+## 2. Understanding Charging Profiles (Implemented Strategy)
 
-A "Charging Profile" defines a power schedule. To set one, you use the `SetChargingProfile` command. The most important fields are:
+We implement a simplified Smart Charging model suitable for most EVSEs:
 
-*   **ChargingProfilePurpose**: Defines *what* this profile applies to.
-    *   `ChargePointMaxProfile`: Limits the entire charger (e.g., grid connection limit).
-    *   `TxDefaultProfile`: The default profile used for *new* transactions (e.g., "weekday 8am-5pm limit").
-    *   `TxProfile`: Applies to a *specific* ongoing transaction (overrides defaults for that user/session).
-*   **StackLevel**: Determines priority when multiple profiles conflict. Higher numbers take precedence.
-*   **ConnectorId**: `0` for the entire charger, `1` (or higher) for specific connectors.
+*   **Persistent Limit (`ChargePointMaxProfile`)**:
+    *   **Purpose:** Limits the *entire charger* (e.g., grid capacity).
+    *   **Behavior:** Saved to the database. Automatically injected when the charger connects or reconnects.
+    *   **Connector ID:** 0 (all connectors).
+    *   **Stack Level:** 1.
+
+*   **Session Limit (`TxProfile`)**:
+    *   **Purpose:** Limits a *specific active session*.
+    *   **Behavior:** One-time application. Not saved to DB.
+    *   **Requirement:** applied to a specific `transactionId`.
+    *   **Stack Level:** 1.
+
+*   **Future Session Limit (`TxDefaultProfile`)**:
+    *   **Purpose:** Limits *new* sessions that haven't started yet.
+    *   **Behavior:** One-time application. Not saved to DB.
+    *   **Stack Level:** 1.
 
 ---
 
-## 3. Common Scenarios
+## 3. Controlling via API
 
-### Scenario A: Limit the Entire Charger (Grid Limit)
-**Purpose:** `ChargePointMaxProfile`
-**Use Case:** Your breaker is 40A, but you want to ensure the charger never pulls more than 32A total, regardless of how many cars are plugged in.
+The Proxy provides a high-level API to manage these limits without constructing raw OCPP packets.
 
-```bash
-curl -X POST http://localhost:8080/api/inject/{chargePointId} \
-  -u admin:YOUR_PASSWORD \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "SetChargingProfile",
-    "payload": {
-      "connectorId": 0,
-      "csChargingProfiles": {
-        "chargingProfileId": 1,
-        "stackLevel": 0,
-        "chargingProfilePurpose": "ChargePointMaxProfile",
-        "chargingProfileKind": "Absolute",
-        "chargingSchedule": {
-          "chargingRateUnit": "A",
-          "chargingSchedulePeriod": [
-            { "startPeriod": 0, "limit": 32.0 }
-          ]
-        }
-      }
-    }
-  }'
+### endpoint: `POST /api/chargers/{cpId}/smart-charging`
+
+#### A. Set Persistent Limit (Charger-Wide)
+Limits the total power draw of the charger. This setting survives reboots and reconnections.
+
+```json
+{
+  "maxPower": 32.0,
+  "action": "apply"  // optional, implied
+}
 ```
 
-### Scenario B: Default User Behavior (Time of Use)
-**Purpose:** `TxDefaultProfile`
-**Use Case:** You want all charging sessions to be limited to 6A during peak hours (e.g., start of day) but go full speed (e.g., 32A) after 8 hours. Note: `startPeriod` is relative to the start of the transaction.
+#### B. Set Session Limit (One-Time)
+Limits the current active session.
 
+```json
+{
+  "sessionLimit": 16.0,
+  "transactionId": 12345
+}
+```
+*   `transactionId` is required for `TxProfile` (active session).
+*   If `transactionId` is omitted, it defaults to `TxDefaultProfile` (future sessions), which may not affect the car currently charging depending on the charger implementation.
+
+#### C. Clear All Profiles
+Removes all limits and clears the persistent setting from the database.
+
+```json
+{
+  "action": "clear"
+}
+```
+
+---
+
+## 4. Manual Injection (Advanced)
+
+If you prefer raw control, you can still inject `SetChargingProfile` manually via `/api/inject/{cpId}`.
+
+### Scenario: Limit Active Transaction
 ```bash
 curl -X POST http://localhost:8080/api/inject/{chargePointId} \
   -u admin:YOUR_PASSWORD \
@@ -74,36 +94,6 @@ curl -X POST http://localhost:8080/api/inject/{chargePointId} \
       "connectorId": 1,
       "csChargingProfiles": {
         "chargingProfileId": 2,
-        "stackLevel": 0,
-        "chargingProfilePurpose": "TxDefaultProfile",
-        "chargingProfileKind": "Relative",
-        "chargingSchedule": {
-          "chargingRateUnit": "A",
-          "chargingSchedulePeriod": [
-            { "startPeriod": 0, "limit": 6.0 },
-            { "startPeriod": 28800, "limit": 32.0 } 
-          ]
-        }
-      }
-    }
-  }'
-```
-*Note: 28800 seconds = 8 hours.*
-
-### Scenario C: Throttle an Active Session
-**Purpose:** `TxProfile`
-**Use Case:** A specific user is charging (transaction ID 12345), and you want to throttle them immediately.
-
-```bash
-curl -X POST http://localhost:8080/api/inject/{chargePointId} \
-  -u admin:YOUR_PASSWORD \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "SetChargingProfile",
-    "payload": {
-      "connectorId": 1,
-      "csChargingProfiles": {
-        "chargingProfileId": 3,
         "transactionId": 12345,
         "stackLevel": 1,
         "chargingProfilePurpose": "TxProfile",
@@ -118,32 +108,12 @@ curl -X POST http://localhost:8080/api/inject/{chargePointId} \
     }
   }'
 ```
-*Note: You must provide the valid `transactionId` of the active session.*
 
 ---
 
-## 4. Clearing Profiles
+## 5. Verification
 
-To remove a profile, use `ClearChargingProfile`.
-
-```bash
-curl -X POST http://localhost:8080/api/inject/{chargePointId} \
-  -u admin:YOUR_PASSWORD \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "ClearChargingProfile",
-    "payload": {
-      "id": 1
-    }
-  }'
-```
-*   `id`: The `chargingProfileId` you want to remove. Omit to clear all/matching criteria.
-
----
-
-## 5. Viewing the Active Limit (`GetCompositeSchedule`)
-
-**Note:** OCPP 1.6 does *not* support retrieving a list of all installed charging profiles from the charger (that feature, `GetChargingProfiles`, was introduced in OCPP 2.0.1). Instead, use `GetCompositeSchedule` to ask the charger for its calculated net limit.
+To see what limit is currently active on the charger, use `GetCompositeSchedule`.
 
 ```bash
 curl -X POST http://localhost:8080/api/inject/{chargePointId} \
@@ -153,32 +123,12 @@ curl -X POST http://localhost:8080/api/inject/{chargePointId} \
     "action": "GetCompositeSchedule",
     "payload": {
       "connectorId": 0,
-      "duration": 3600,
+      "duration": 60,
       "chargingRateUnit": "A"
     }
   }'
 ```
 
-**Success Response (Example):**
-```json
-{
-  "status": "Accepted",
-  "scheduleStart": "2023-12-15T10:00:00Z",
-  "connectorId": 0,
-  "chargingSchedule": {
-    "duration": 3600,
-    "chargingRateUnit": "A",
-    "chargingSchedulePeriod": [
-      {
-        "startPeriod": 0,
-        "limit": 16.0
-      }
-    ]
-  }
-}
-```
-
 ## Troubleshooting
-*   **"NotSupported"**: The charger might not support Smart Charging.
-*   **"Rejected"**: The profile might be invalid (e.g., `TxProfile` without `transactionId`, or limits outside accepted range).
-*   **Profiles not working?**: Check if your charger is in "Plug & Charge" mode. See "Prerequisites" above.
+*   **Persistent limit not applying?** Ensure the charger is rebooted or reconnected after the limit is set in the DB. The proxy applies it on the `connection` event.
+*   **Session limit disabled?** The UI disables the session limit control if it cannot detect an active transaction ID. Ensure a session is in progress.

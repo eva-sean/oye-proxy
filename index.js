@@ -166,6 +166,123 @@ app.post('/api/config', requireAuth, async (req, res) => {
     }
 });
 
+// Smart Charging Endpoint
+app.post('/api/chargers/:cpId/smart-charging', requireAuth, async (req, res) => {
+    if (DEBUG) { logger('DEBUG', 'POST /smart-charging', { url: req.url, body: req.body }) };
+    const { cpId } = req.params;
+    const { maxPower, sessionLimit, action, transactionId } = req.body; // action can be 'clear'
+
+    const connection = clients.get(cpId);
+    if (!connection || !connection.chargerSocket || connection.chargerSocket.readyState !== WebSocket.OPEN) {
+        return res.status(503).json({ error: 'Charger not connected' });
+    }
+
+    try {
+        let messageId;
+        let ocppMessage;
+
+        if (action === 'clear') {
+            // Clear persistent limit in DB
+            await db.updateChargerLimit(cpId, null);
+
+            // Inject ClearChargingProfile
+            messageId = crypto.randomUUID().substring(0, 36);
+            ocppMessage = [2, messageId, 'ClearChargingProfile', {}]; // Clears all
+            logger('INFO', 'Clearing charging profiles', { chargePointId: cpId });
+
+        } else if (maxPower !== undefined) {
+            // Update persistent limit in DB
+            const limit = parseFloat(maxPower);
+            await db.updateChargerLimit(cpId, limit);
+
+            // Inject SetChargingProfile (ChargePointMaxProfile)
+            messageId = crypto.randomUUID().substring(0, 36);
+            const profile = {
+                connectorId: 0,
+                csChargingProfiles: {
+                    chargingProfileId: 1,
+                    stackLevel: 1,
+                    chargingProfilePurpose: 'ChargePointMaxProfile',
+                    chargingProfileKind: 'Absolute',
+                    chargingSchedule: {
+                        chargingRateUnit: 'A',
+                        chargingSchedulePeriod: [{ startPeriod: 0, limit: limit }]
+                    }
+                }
+            };
+            ocppMessage = [2, messageId, 'SetChargingProfile', profile];
+            logger('INFO', 'Setting permanent power limit', { chargePointId: cpId, limit });
+
+        } else if (sessionLimit !== undefined) {
+            // Do NOT update DB (session only)
+            const limit = parseFloat(sessionLimit);
+            const { transactionId } = req.body; // Optional transactionId
+
+            messageId = crypto.randomUUID().substring(0, 36);
+
+            let profile;
+
+            if (transactionId) {
+                // TxProfile for a specific transaction
+                profile = {
+                    connectorId: 0,
+                    csChargingProfiles: {
+                        chargingProfileId: 2,
+                        stackLevel: 1,
+                        chargingProfilePurpose: 'TxProfile',
+                        chargingProfileKind: 'Absolute',
+                        transactionId: transactionId,
+                        chargingSchedule: {
+                            chargingRateUnit: 'A',
+                            chargingSchedulePeriod: [{ startPeriod: 0, limit: limit }]
+                        }
+                    }
+                };
+                logger('INFO', 'Setting session limit for transaction', { chargePointId: cpId, limit, transactionId });
+            } else {
+                // TxDefaultProfile for future transactions
+                profile = {
+                    connectorId: 0,
+                    csChargingProfiles: {
+                        chargingProfileId: 2,
+                        stackLevel: 1,
+                        chargingProfilePurpose: 'TxDefaultProfile',
+                        chargingProfileKind: 'Absolute',
+                        chargingSchedule: {
+                            chargingRateUnit: 'A',
+                            chargingSchedulePeriod: [{ startPeriod: 0, limit: limit }]
+                        }
+                    }
+                };
+                logger('INFO', 'Setting default Tx limit', { chargePointId: cpId, limit });
+            }
+
+            ocppMessage = [2, messageId, 'SetChargingProfile', profile];
+
+        } else {
+            return res.status(400).json({ error: 'Invalid parameters. Provide maxPower, sessionLimit, or action=clear' });
+        }
+
+        // Send the message
+        const payloadStr = JSON.stringify(ocppMessage);
+
+        // Track injection for response handling
+        connection.pendingIds.add(messageId);
+        setTimeout(() => {
+            if (connection.pendingIds.has(messageId)) connection.pendingIds.delete(messageId);
+        }, 60000);
+
+        connection.chargerSocket.send(payloadStr);
+        await logMessage(cpId, 'INJECTION_REQUEST', ocppMessage);
+
+        return res.json({ status: 'sent', messageId: messageId });
+
+    } catch (e) {
+        logger('ERROR', 'Smart Charging update failed', { chargePointId: cpId, error: e.message });
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 // Command injection
 app.post('/api/inject/:cpId', requireAuth, async (req, res) => {
     if (DEBUG) { logger('DEBUG', 'POST request', { url: req.url }) };
@@ -301,6 +418,46 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
         reconnectTimer: null
     });
 
+    // --- Smart Charging Persistent Logic ---
+    // Enforce max_power limit if set in DB.
+    // This runs immediately on charger connection, regardless of CSMS status.
+    (async () => {
+        try {
+            const chargerData = await db.getCharger(chargePointId);
+            if (chargerData && chargerData.max_power !== null && chargerData.max_power !== undefined) {
+                const limit = parseFloat(chargerData.max_power);
+                if (!isNaN(limit)) {
+                    logger('INFO', `Enforcing persistent power limit`, { chargePointId, limit });
+                    const messageId = crypto.randomUUID().substring(0, 36);
+                    const profile = {
+                        connectorId: 0,
+                        csChargingProfiles: {
+                            chargingProfileId: 1,
+                            stackLevel: 1,
+                            chargingProfilePurpose: 'ChargePointMaxProfile',
+                            chargingProfileKind: 'Absolute',
+                            chargingSchedule: {
+                                chargingRateUnit: 'A',
+                                chargingSchedulePeriod: [{ startPeriod: 0, limit: limit }]
+                            }
+                        }
+                    };
+                    const payload = [2, messageId, 'SetChargingProfile', profile];
+
+                    // Small delay to ensure connection is fully ready and to separate from potential BootNotification response
+                    setTimeout(async () => {
+                        if (chargerSocket.readyState === WebSocket.OPEN) {
+                            chargerSocket.send(JSON.stringify(payload));
+                            await logMessage(chargePointId, 'INJECTION_REQUEST', payload);
+                        }
+                    }, 500);
+                }
+            }
+        } catch (err) {
+            logger('WARNING', 'Failed to enforce smart charging limit on connect', { chargePointId, error: err.message });
+        }
+    })();
+
     let csmsSocket = null;
 
     // Function to connect to CSMS with retry logic
@@ -422,7 +579,6 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
                         // Not JSON, just forward
                     }
 
-                    logMessage(chargePointId, 'DOWNSTREAM', msgStr);
                     if (chargerSocket.readyState === WebSocket.OPEN) {
                         if (DEBUG) logger('DEBUG', 'PROXY → CHARGER', { chargePointId, message: msgStr });
                         chargerSocket.send(msgStr);
@@ -430,6 +586,9 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
                         logger('WARNING', 'Charger disconnected, cannot forward CSMS message', { chargePointId });
                     }
                 });
+
+                // --- NEW: Smart Charging Logic on Connection ---
+                // (Moved to main connection handler to support standalone mode)
 
             } catch (err) {
                 logger('ERROR', 'Failed to create CSMS connection', {

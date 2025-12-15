@@ -72,10 +72,40 @@ class DatabaseAdapter {
     // Charger methods
     async updateChargerStatus(chargePointId, status) {
         const lastSeen = Math.floor(Date.now() / 1000);
-        await this.db('chargers')
-            .insert({ charge_point_id: chargePointId, status, last_seen: lastSeen })
-            .onConflict('charge_point_id')
-            .merge();
+        // Use raw query for upsert to preserve other columns like max_power
+        // Knex .merge() might overwrite with default/null if not careful depending on dialect interaction
+        // But here we want to update ONLY status and last_seen if exists, or insert if not.
+        // For simplicity with Knex upsert:
+        const existing = await this.db('chargers').where('charge_point_id', chargePointId).first();
+        if (existing) {
+            await this.db('chargers')
+                .where('charge_point_id', chargePointId)
+                .update({ status, last_seen: lastSeen });
+        } else {
+            await this.db('chargers').insert({
+                charge_point_id: chargePointId,
+                status,
+                last_seen: lastSeen
+            });
+        }
+    }
+
+    async updateChargerLimit(chargePointId, maxPower) {
+        // maxPower can be null
+        const existing = await this.db('chargers').where('charge_point_id', chargePointId).first();
+        if (existing) {
+            await this.db('chargers')
+                .where('charge_point_id', chargePointId)
+                .update({ max_power: maxPower });
+        } else {
+            // Should not happen for unknown charger, but handle it
+            await this.db('chargers').insert({
+                charge_point_id: chargePointId,
+                status: 'OFFLINE',
+                last_seen: Math.floor(Date.now() / 1000),
+                max_power: maxPower
+            });
+        }
     }
 
     async getCharger(chargePointId) {

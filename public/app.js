@@ -284,6 +284,45 @@ function setupEventListeners() {
                 await stopCharge(chargerId, connectorId, e.target);
             }
         }
+
+        // Smart Charging: Apply Max Power
+        if (e.target.closest('.apply-smart-charging-max')) {
+            const btn = e.target.closest('.apply-smart-charging-max');
+            const chargerId = btn.dataset.chargerId;
+            const maxPowerInput = document.getElementById('scMaxPower');
+
+            if (maxPowerInput) {
+                updateSmartCharging(chargerId, maxPowerInput.value, null, null, btn, 'max');
+            }
+        }
+
+        // Smart Charging: Apply Session Limit
+        if (e.target.closest('.apply-smart-charging-session')) {
+            const btn = e.target.closest('.apply-smart-charging-session');
+            const chargerId = btn.dataset.chargerId;
+            const transactionId = btn.dataset.transactionId;
+            const sessionInput = document.getElementById('scSessionLimit');
+
+            if (sessionInput) {
+                updateSmartCharging(chargerId, null, sessionInput.value, transactionId, btn, 'session');
+            }
+        }
+
+        // Smart Charging: Clear
+        if (e.target.closest('.clear-smart-charging')) {
+            const btn = e.target.closest('.clear-smart-charging');
+            const chargerId = btn.dataset.chargerId;
+            if (chargerId) {
+                if (confirm('Are you sure you want to clear all charging profiles and remove the persistent limit?')) {
+                    await updateSmartCharging(chargerId, undefined, undefined, null, btn, 'clear');
+                    // Clear inputs
+                    const maxP = document.getElementById('scMaxPower');
+                    const sessL = document.getElementById('scSessionLimit');
+                    if (maxP) maxP.value = '';
+                    if (sessL) sessL.value = '';
+                }
+            }
+        }
     });
 
     // Proxy configuration (in modal)
@@ -432,7 +471,7 @@ async function fetchLogs() {
                 // Check if log already exists
                 if (!displayedLogs.some(l => l.id === log.id)) {
                     // Store log with converted timestamp
-                    addLogEntry({...log, timestamp: timestampMs});
+                    addLogEntry({ ...log, timestamp: timestampMs });
                     messageCount++;
                 }
             });
@@ -1168,8 +1207,28 @@ async function loadChargerStatus() {
 
         // Process all logs (convert timestamps from seconds to milliseconds)
         logs.forEach(log => {
-            updateChargerStatusData({...log, timestamp: (log.timestamp || 0) * 1000});
+            updateChargerStatusData({ ...log, timestamp: (log.timestamp || 0) * 1000 });
         });
+
+        // Add max_power from updated API response (API was updated to include DB fields in step 208)
+        // We need to fetch the charger details again or rely on what fetchChargers() populates?
+        // Actually fetchChargers() populates `updateChargersList`.
+        // We should probably fetch the single charger info here to get the max_power.
+        // Or better, let's just make a quick call to get the specific charger config/info.
+        // Since we modified `getChargers` API to include `max_power`, we can fetch the list again or just find it.
+        // Optimally, `loadChargerStatus` should trust the data coming from the logs mostly, but for config-like fields (max_power),
+        // we need the DB state.
+
+        // Let's fetch the charger details to get max_power
+        try {
+            const chargers = await API.get('/api/chargers');
+            const currentCharger = chargers.find(c => c.charge_point_id === chargerId);
+            if (currentCharger) {
+                chargerStatusData[chargerId].maxPower = currentCharger.max_power;
+            }
+        } catch (e) {
+            console.error('Failed to fetch charger details for max_power', e);
+        }
 
         // Display the status
         displayChargerStatus(chargerId);
@@ -1182,6 +1241,47 @@ async function loadChargerStatus() {
             </div>
             <div class="log-payload">Failed to load charger status: ${escapeHtml(error.message)}</div>
         </div>`;
+    }
+}
+
+// Update Smart Charging
+async function updateSmartCharging(chargerId, maxPower, sessionLimit, transactionId, btn, type) {
+    const originalText = btn.textContent;
+    try {
+        btn.disabled = true;
+        if (type === 'clear') btn.textContent = 'Clearing...';
+        else btn.textContent = 'Applying...';
+
+        const payload = {};
+
+        if (type === 'clear') {
+            payload.action = 'clear';
+        } else if (type === 'max') {
+            if (!maxPower) throw new Error('Please enter a Max Power value');
+            payload.maxPower = maxPower;
+        } else if (type === 'session') {
+            if (!sessionLimit) throw new Error('Please enter a Session Limit value');
+            payload.sessionLimit = sessionLimit;
+            if (transactionId) payload.transactionId = parseInt(transactionId);
+        }
+
+        // Only send fields if they have values
+        await API.post(`/api/chargers/${chargerId}/smart-charging`, payload);
+
+        // Wait a bit then refresh
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        await loadChargerStatus();
+
+        // No alert, just finish
+
+    } catch (error) {
+        console.error('Error updating smart charging:', error);
+        alert('Failed to update: ' + error.message);
+    } finally {
+        if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
@@ -1235,10 +1335,10 @@ function displayChargerStatus(chargerId) {
         connectorIds.forEach(connectorId => {
             const conn = data.connectors[connectorId];
             const statusClass = conn.status === 'Available' ? 'status-available' :
-                               conn.status === 'Charging' ? 'status-charging' :
-                               conn.status === 'Preparing' ? 'status-preparing' :
-                               conn.status === 'Finishing' ? 'status-finishing' :
-                               conn.status === 'Faulted' ? 'status-faulted' : 'status-unknown';
+                conn.status === 'Charging' ? 'status-charging' :
+                    conn.status === 'Preparing' ? 'status-preparing' :
+                        conn.status === 'Finishing' ? 'status-finishing' :
+                            conn.status === 'Faulted' ? 'status-faulted' : 'status-unknown';
 
             // Determine if charging based on status
             const isCharging = conn.status === 'Charging';
@@ -1267,6 +1367,64 @@ function displayChargerStatus(chargerId) {
         });
         html += '</div>';
     }
+
+    // Smart Charging Control
+    const maxPowerVal = data.maxPower !== undefined && data.maxPower !== null ? data.maxPower : '';
+
+    html += '<div class="status-section">';
+    html += '<h3>Smart Charging</h3>';
+
+    // We'll use standard form-group styling but in a grid
+    // The .form-group input styles are already defined in css, we just need to use them correctly.
+    // However, the inputs in .form-group are styled with `width: 100%`.
+    // Let's create a structure similar to the config form.
+
+    html += '<div class="status-grid" style="grid-template-columns: 1fr 1fr; gap: 2rem; align-items: start;">';
+
+    // 1. Persistent Limit Control
+    html += '<div class="sc-control-group" style="background: var(--bg-dark); padding: 1rem; border-radius: 0.25rem;">';
+    html += '<h4 style="margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-secondary);">Persistent Limit</h4>';
+    html += '<div class="form-group">';
+    html += '<label for="scMaxPower">Max Power (Amps)</label>';
+    html += `<input type="number" id="scMaxPower" step="0.1" placeholder="e.g. 16" value="${maxPowerVal}" data-charger-id="${chargerId}" style="width: 100%; padding: 0.75rem; background: var(--bg-medium); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text-primary);">`;
+    html += '<small class="help-text" style="display: block; margin-top: 0.5rem;">Saved to DB and re-applied on reconnection.</small>';
+    html += '</div>';
+    html += `<button class="btn btn-primary apply-smart-charging-max" data-charger-id="${chargerId}" style="width: 100%;">Apply Max Power</button>`;
+    html += '</div>';
+
+    // 2. Session Limit Control
+    // Find active transaction on connector 1 (assuming single connector for now or first active one)
+    // Ideally we should have a selector if there are multiple connectors, but for now we look for the first active charging session.
+    let activeTransactionId = null;
+    let activeConnectorId = null;
+
+    // Find connector with Charging status
+    Object.keys(data.connectors).forEach(cid => {
+        if (data.connectors[cid].status === 'Charging' && data.transactionIds[cid]) {
+            activeConnectorId = cid;
+            activeTransactionId = data.transactionIds[cid];
+        }
+    });
+
+    const isCharging = !!activeTransactionId;
+
+    html += '<div class="sc-control-group" style="background: var(--bg-dark); padding: 1rem; border-radius: 0.25rem;">';
+    html += '<h4 style="margin-top: 0; margin-bottom: 1rem; font-size: 0.9rem; color: var(--text-secondary);">Session Limit (One-time)</h4>';
+    html += '<div class="form-group">';
+    html += '<label for="scSessionLimit">Session Limit (Amps)</label>';
+    html += `<input type="number" id="scSessionLimit" step="0.1" placeholder="e.g. 10" data-charger-id="${chargerId}" ${!isCharging ? 'disabled' : ''} style="width: 100%; padding: 0.75rem; background: var(--bg-medium); border: 1px solid var(--border); border-radius: 0.25rem; color: var(--text-primary);">`;
+    html += '<small class="help-text" style="display: block; margin-top: 0.5rem;">Only available during an active charging session.</small>';
+    html += '</div>';
+    html += `<button class="btn btn-primary apply-smart-charging-session" data-charger-id="${chargerId}" data-transaction-id="${activeTransactionId || ''}" ${!isCharging ? 'disabled' : ''} style="width: 100%;">Apply Session Limit</button>`;
+    html += '</div>';
+
+    html += '</div>'; // grid
+
+    html += '<div style="margin-top: 1rem; text-align: right;">';
+    html += `<button class="btn btn-secondary clear-smart-charging" data-charger-id="${chargerId}">Clear All Profiles</button>`;
+    html += '</div>';
+
+    html += '</div>';
 
     // Meter Values
     const meterKeys = Object.keys(data.meterValues).sort();
