@@ -141,33 +141,9 @@ curl -X POST http://localhost:8080/api/inject/{chargePointId} \
 
 ---
 
-## 5. Viewing All Profiles (`GetChargingProfiles`)
+## 5. Viewing the Active Limit (`GetCompositeSchedule`)
 
-To see a list of *all* profiles currently installed on the charger, use `GetChargingProfiles`.
-
-```bash
-curl -X POST http://localhost:8080/api/inject/{chargePointId} \
-  -u admin:YOUR_PASSWORD \
-  -H "Content-Type: application/json" \
-  -d '{
-    "action": "GetChargingProfiles",
-    "payload": {
-      "connectorId": 0,
-      "chargingProfilePurpose": "ChargePointMaxProfile" 
-    }
-  }'
-```
-**Payload Options:**
-*   `connectorId`: Filters by connector (0 = whole charger).
-*   `chargingProfilePurpose`: Optional filter (e.g., `TxDefaultProfile`). Omit to potentially see more (depending on charger implementation).
-
-**Note:** This command triggers an asynchronous response. The charger will reply with a `GetChargingProfilesResponse` (e.g., `Accepted` or `NoProfiles`). Then, if profiles exist, it will likely send the actual data via a separate `ReportChargingProfiles` message (OCPP 1.6 logic), which you will see in the **UPSTREAM** logs.
-
----
-
-## 6. Viewing the Active Limit (`GetCompositeSchedule`)
-
-This command differs from `GetChargingProfiles`. It asks the charger: "Considering all these profiles and constraints, what is my **net result** right now?"
+**Note:** OCPP 1.6 does *not* support retrieving a list of all installed charging profiles from the charger (that feature, `GetChargingProfiles`, was introduced in OCPP 2.0.1). Instead, use `GetCompositeSchedule` to ask the charger for its calculated net limit.
 
 ```bash
 curl -X POST http://localhost:8080/api/inject/{chargePointId} \
@@ -203,9 +179,6 @@ curl -X POST http://localhost:8080/api/inject/{chargePointId} \
 ```
 
 ## Troubleshooting
-*   **"NotSupported" response**: It is very common for chargers to respond with "NotSupported" to `GetChargingProfiles`. This means the charger firmware does not allow retrieving profiles, even if they are active.
-*   **No "ReportChargingProfiles" message**: If you sent `GetChargingProfiles` and got an "Accepted" response but no collection of profiles followed:
-    1.  The charger might have no profiles set.
-    2.  The charger might be failing to send the report.
-    3.  (Fixed in this version) Ensure your proxy version supports `ReportChargingProfiles` acknowledgement if running offline.
+*   **"NotSupported"**: The charger might not support Smart Charging.
 *   **"Rejected"**: The profile might be invalid (e.g., `TxProfile` without `transactionId`, or limits outside accepted range).
+*   **Profiles not working?**: Check if your charger is in "Plug & Charge" mode. See "Prerequisites" above.

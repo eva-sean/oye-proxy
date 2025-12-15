@@ -674,9 +674,8 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
                             }];
                             break;
 
-                        case 'ReportChargingProfiles':
-                            logger('INFO', 'Acknowledging ReportChargingProfiles (CSMS unavailable)', { chargePointId });
-                            proxyResponse = [3, messageId, {}];
+                        default:
+                            if (DEBUG) logger('DEBUG', 'Unhandled upstream action (CSMS unavailable)', { chargePointId, action });
                             break;
                     }
 
