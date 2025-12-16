@@ -9,7 +9,16 @@ exports.up = async function (knex) {
         await knex.schema.createTable('config', function (table) {
             table.string('key').primary();
             table.text('value').notNullable();
-            table.integer('updated_at').defaultTo(knex.raw("(strftime('%s', 'now'))"));
+
+            // Cross-DB timestamp check
+            // SQLite: strftime('%s', 'now') -> seconds
+            // Postgres: EXTRACT(EPOCH FROM NOW()) -> seconds
+            const isPostgres = knex.client.config.client === 'pg';
+            if (isPostgres) {
+                table.integer('updated_at').defaultTo(knex.raw('CAST(EXTRACT(EPOCH FROM NOW()) AS INTEGER)'));
+            } else {
+                table.integer('updated_at').defaultTo(knex.raw("(strftime('%s', 'now'))"));
+            }
         });
 
         // Seed default config only if table was just created
