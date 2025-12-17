@@ -63,7 +63,7 @@ h1 {
 .stat {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
 }
 
 .stat-label {
@@ -1130,7 +1130,15 @@ h1 {
 
     h1 {
         font-size: 1.25rem;
-        text-align: center;
+        text-align: left;
+    }
+
+    /* Keep user menu and config icon at top right */
+    header > div:has(.user-menu-container) {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        margin-left: 0;
     }
 
     .header-stats {
