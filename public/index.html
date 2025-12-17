@@ -35,10 +35,12 @@
             <!-- Charger List Sidebar -->
             <aside class="charger-list">
                 <h2>Charge Points</h2>
-                <div class="filter-controls">
-                    <input type="text" id="chargerFilter" placeholder="Filter chargers..." />
+                <div class="charger-list-content">
+                    <div class="filter-controls">
+                        <input type="text" id="chargerFilter" placeholder="Filter chargers..." />
+                    </div>
+                    <div id="chargersList"></div>
                 </div>
-                <div id="chargersList"></div>
             </aside>
 
             <!-- Main View -->
@@ -70,35 +72,40 @@
                 <!-- Logs Tab -->
                 <div id="logs-tab" class="tab-content">
                     <div class="controls">
-                        <select id="chargerSelect">
-                            <option value="">All Chargers</option>
-                        </select>
-                        <select id="directionFilter">
-                            <option value="">All Directions</option>
-                            <option value="UPSTREAM">Upstream (Charger → CSMS)</option>
-                            <option value="DOWNSTREAM">Downstream (CSMS → Charger)</option>
-                            <option value="INJECTION_REQUEST">Injection Request</option>
-                            <option value="INJECTION_RESPONSE">Injection Response</option>
-                        </select>
-                        <select id="messageTypeFilter">
-                            <option value="">All Message Types</option>
-                        </select>
-                        <select id="timeRangeFilter">
-                            <option value="">Custom Range</option>
-                            <option value="1h">Last 1 Hour</option>
-                            <option value="24h">Last 24 Hours</option>
-                        </select>
-                        <input type="datetime-local" id="dateFrom" title="From date/time" />
-                        <input type="datetime-local" id="dateTo" title="To date/time" />
-                        <button id="clearFilters" class="btn btn-secondary">Clear Filters</button>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="autoscroll" checked />
-                            Auto-scroll
-                        </label>
-                        <label class="checkbox-label">
-                            <input type="checkbox" id="autorefresh" checked />
-                            Auto-refresh
-                        </label>
+                        <div class="controls-header">
+                            <h3>Filters</h3>
+                        </div>
+                        <div class="controls-content">
+                            <select id="chargerSelect">
+                                <option value="">All Chargers</option>
+                            </select>
+                            <select id="directionFilter">
+                                <option value="">All Directions</option>
+                                <option value="UPSTREAM">Upstream (Charger → CSMS)</option>
+                                <option value="DOWNSTREAM">Downstream (CSMS → Charger)</option>
+                                <option value="INJECTION_REQUEST">Injection Request</option>
+                                <option value="INJECTION_RESPONSE">Injection Response</option>
+                            </select>
+                            <select id="messageTypeFilter">
+                                <option value="">All Message Types</option>
+                            </select>
+                            <select id="timeRangeFilter">
+                                <option value="">Custom Range</option>
+                                <option value="1h">Last 1 Hour</option>
+                                <option value="24h">Last 24 Hours</option>
+                            </select>
+                            <input type="datetime-local" id="dateFrom" title="From date/time" />
+                            <input type="datetime-local" id="dateTo" title="To date/time" />
+                            <button id="clearFilters" class="btn btn-secondary">Clear Filters</button>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="autoscroll" checked />
+                                Auto-scroll
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="autorefresh" checked />
+                                Auto-refresh
+                            </label>
+                        </div>
                     </div>
 
                     <div class="logs-container" id="logsContainer"></div>

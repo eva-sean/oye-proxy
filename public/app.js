@@ -195,6 +195,22 @@ function setupEventListeners() {
         });
     });
 
+    // Charger list collapse toggle
+    const chargerListHeader = document.querySelector('.charger-list h2');
+    const chargerList = document.querySelector('.charger-list');
+    chargerListHeader.addEventListener('click', () => {
+        chargerList.classList.toggle('collapsed');
+    });
+
+    // Controls/Filters collapse toggle
+    const controlsHeader = document.querySelector('.controls-header');
+    const controls = document.querySelector('.controls');
+    if (controlsHeader && controls) {
+        controlsHeader.addEventListener('click', () => {
+            controls.classList.toggle('collapsed');
+        });
+    }
+
     // Charger filter
     document.getElementById('chargerFilter').addEventListener('input', (e) => {
         filterChargers(e.target.value);
@@ -587,6 +603,12 @@ function selectCharger(chargerId) {
     document.querySelectorAll('.charger-item').forEach(item => {
         item.classList.toggle('selected', item.querySelector('.charger-name').textContent === chargerId);
     });
+
+    // Auto-collapse charger list on mobile when a charger is selected
+    if (window.innerWidth <= 768) {
+        const chargerList = document.querySelector('.charger-list');
+        chargerList.classList.add('collapsed');
+    }
 
     // Check which tab is active
     const activeTab = document.querySelector('.tab-button.active').dataset.tab;
