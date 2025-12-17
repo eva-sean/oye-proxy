@@ -570,14 +570,18 @@ wss.on('connection', async (chargerSocket, req, chargePointId) => {
                     const msgStr = message.toString();
                     if (DEBUG) logger('DEBUG', 'CSMS → PROXY', { chargePointId, message: msgStr });
 
+                    let parsed = null;
                     try {
-                        const parsed = JSON.parse(msgStr);
+                        parsed = JSON.parse(msgStr);
                         if (Array.isArray(parsed) && parsed[0] === 4) {
                             logger('ERROR', 'CSMS error response', { chargePointId, response: parsed });
                         }
                     } catch (e) {
                         // Not JSON, just forward
                     }
+
+                    // Log downstream message to database
+                    await logMessage(chargePointId, 'DOWNSTREAM', parsed || msgStr);
 
                     if (chargerSocket.readyState === WebSocket.OPEN) {
                         if (DEBUG) logger('DEBUG', 'PROXY → CHARGER', { chargePointId, message: msgStr });
