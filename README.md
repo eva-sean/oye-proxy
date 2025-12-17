@@ -1,5 +1,7 @@
 # OYE OCPP Proxy
 
+<img src="./docs/screens/screen-02.png" alt="OYE Dashboard Screen" style="zoom:50%;" />
+
 **Own Your EVSE (OYE)** is a transparent OCPP proxy with real-time monitoring and independent EVSE control.
 
 **Why?** EV chargers (aka EVSEs) tend to be designed for two types of users: end-users (personal or business) and charging network operators. Most charging control platforms are designed to hide the full capabilities of the charger from end-users, whether or not they own the hardware.
