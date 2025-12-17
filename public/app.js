@@ -339,6 +339,15 @@ function setupEventListeners() {
                 }
             }
         }
+
+        // Status section collapse toggle
+        if (e.target.closest('.status-section h3')) {
+            const h3 = e.target.closest('.status-section h3');
+            const section = h3.closest('.status-section');
+            if (section) {
+                section.classList.toggle('collapsed');
+            }
+        }
     });
 
     // Proxy configuration (in modal)
@@ -1321,8 +1330,9 @@ function displayChargerStatus(chargerId) {
 
     // Overview Section
     html += '<div class="status-section">';
-    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
     html += '<h3>Overview</h3>';
+    html += '<div class="status-section-content">';
+    html += '<div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">';
     html += `<button class="btn btn-secondary refresh-connector-status" data-charger-id="${chargerId}">Get Connector Status</button>`;
     html += '</div>';
     html += '<div class="status-grid">';
@@ -1331,11 +1341,13 @@ function displayChargerStatus(chargerId) {
     html += `<div class="status-item"><strong>Last Heartbeat:</strong> ${data.lastHeartbeat ? formatTimestamp(data.lastHeartbeat) : 'N/A'}</div>`;
     html += '</div>';
     html += '</div>';
+    html += '</div>';
 
     // Boot Information
     if (data.bootInfo) {
         html += '<div class="status-section">';
         html += '<h3>Charger Information</h3>';
+        html += '<div class="status-section-content">';
         html += '<div class="status-grid">';
         if (data.bootInfo.chargePointVendor) html += `<div class="status-item"><strong>Vendor:</strong> ${data.bootInfo.chargePointVendor}</div>`;
         if (data.bootInfo.chargePointModel) html += `<div class="status-item"><strong>Model:</strong> ${data.bootInfo.chargePointModel}</div>`;
@@ -1347,6 +1359,7 @@ function displayChargerStatus(chargerId) {
         if (data.bootInfo.meterSerialNumber) html += `<div class="status-item"><strong>Meter Serial:</strong> ${data.bootInfo.meterSerialNumber}</div>`;
         html += '</div>';
         html += '</div>';
+        html += '</div>';
     }
 
     // Connector Status
@@ -1354,6 +1367,7 @@ function displayChargerStatus(chargerId) {
     if (connectorIds.length > 0) {
         html += '<div class="status-section">';
         html += '<h3>Connector Status</h3>';
+        html += '<div class="status-section-content">';
         connectorIds.forEach(connectorId => {
             const conn = data.connectors[connectorId];
             const statusClass = conn.status === 'Available' ? 'status-available' :
@@ -1388,6 +1402,7 @@ function displayChargerStatus(chargerId) {
             html += '</div>';
         });
         html += '</div>';
+        html += '</div>';
     }
 
     // Smart Charging Control
@@ -1395,6 +1410,7 @@ function displayChargerStatus(chargerId) {
 
     html += '<div class="status-section">';
     html += '<h3>Smart Charging</h3>';
+    html += '<div class="status-section-content">';
 
     // We'll use standard form-group styling but in a grid
     // The .form-group input styles are already defined in css, we just need to use them correctly.
@@ -1447,12 +1463,14 @@ function displayChargerStatus(chargerId) {
     html += '</div>';
 
     html += '</div>';
+    html += '</div>';
 
     // Meter Values
     const meterKeys = Object.keys(data.meterValues).sort();
     if (meterKeys.length > 0) {
         html += '<div class="status-section">';
         html += '<h3>Meter Values</h3>';
+        html += '<div class="status-section-content">';
 
         // Group by connector
         const byConnector = {};
@@ -1483,13 +1501,15 @@ function displayChargerStatus(chargerId) {
             html += '</div>';
         });
         html += '</div>';
+        html += '</div>';
     }
 
     // OCPP Configuration
     const configData = configurationData[chargerId];
     html += '<div class="status-section">';
-    html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
     html += '<h3>OCPP Configuration</h3>';
+    html += '<div class="status-section-content">';
+    html += '<div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">';
     html += '<button id="refreshConfiguration" class="btn btn-secondary">Refresh Configuration</button>';
     html += '</div>';
 
@@ -1531,6 +1551,7 @@ function displayChargerStatus(chargerId) {
         html += '<p style="color: var(--text-secondary); text-align: center; margin: 2rem 0;">No configuration data available. Click "Refresh Configuration" to request it from the charger.</p>';
     }
 
+    html += '</div>';
     html += '</div>';
 
     // No data message
