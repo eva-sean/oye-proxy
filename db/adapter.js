@@ -192,9 +192,35 @@ class DatabaseAdapter {
 
     // Migration helper
     async runMigrations() {
-        logger('INFO', 'Running database migrations...');
-        await this.db.migrate.latest();
-        logger('INFO', 'Database migrations completed');
+        const useMemoryDb = process.env.USE_MEMORY_DB === 'true';
+
+        if (useMemoryDb) {
+            // For in-memory database, run schema directly instead of using migration files
+            // This avoids file system writes for lock files in Cloud Run
+            logger('INFO', 'Initializing in-memory database schema...');
+            const pathModule = require('path');
+            const fs = require('fs');
+
+            // Get all migration files in order
+            const migrationsDir = pathModule.join(__dirname, 'migrations');
+            const migrationFiles = fs.readdirSync(migrationsDir)
+                .filter(f => f.endsWith('.js'))
+                .sort();
+
+            // Run each migration in order
+            for (const file of migrationFiles) {
+                logger('INFO', `Running migration: ${file}`);
+                const migration = require(pathModule.join(migrationsDir, file));
+                await migration.up(this.db);
+            }
+
+            logger('INFO', 'In-memory database schema initialized');
+        } else {
+            // For file-based databases, use normal knex migrations
+            logger('INFO', 'Running database migrations...');
+            await this.db.migrate.latest();
+            logger('INFO', 'Database migrations completed');
+        }
     }
 
     async close() {

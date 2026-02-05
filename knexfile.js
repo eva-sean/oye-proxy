@@ -15,7 +15,22 @@ module.exports = {
     },
     useNullAsDefault: true,
     migrations: {
-      directory: './db/migrations'
+      directory: './db/migrations',
+      // Disable migration lock for in-memory database (Cloud Run read-only filesystem)
+      disableMigrationsListValidation: process.env.USE_MEMORY_DB === 'true'
+    },
+    pool: {
+      // In-memory database must use single connection to preserve state
+      min: 1,
+      max: 1,
+      afterCreate: (conn, done) => {
+        // For in-memory DB, run migrations immediately on connection
+        if (process.env.USE_MEMORY_DB === 'true') {
+          conn.run('PRAGMA foreign_keys = ON', done);
+        } else {
+          done();
+        }
+      }
     }
   },
 
