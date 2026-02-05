@@ -23,9 +23,9 @@ COPY . .
 EXPOSE 8080
 
 # Create startup script
-# We run init.js at startup to ensure migrations run against the actual connected DB
+# Skip db/init.js for in-memory database (USE_MEMORY_DB=true) - initialization happens inline in index.js
 RUN echo '#!/bin/bash' > /app/start.sh && \
-    echo 'node db/init.js' >> /app/start.sh && \
+    echo 'if [ "$USE_MEMORY_DB" != "true" ]; then node db/init.js; fi' >> /app/start.sh && \
     echo 'if [ -f scripts/crontab ]; then crontab scripts/crontab && crond; fi' >> /app/start.sh && \
     echo 'node index.js' >> /app/start.sh && \
     chmod +x /app/start.sh

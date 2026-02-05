@@ -31,7 +31,7 @@ The proxy operates as a single-instance Node.js application running in Docker. I
 ## Tech Stack
 
 - **Runtime:** Node.js (Express + `ws`)
-- **Database:** SQLite (local default) or PostgreSQL (production/cloud)
+- **Database:** SQLite (file-based, in-memory, or PostgreSQL for production/cloud)
 - **Infrastructure:** Docker + Docker Compose
 - **Protocols:** OCPP 1.6J / 2.0.1 (WebSocket)
 - **Frontend:** Vanilla JavaScript (polling-based)
@@ -136,6 +136,63 @@ docker exec -it oye-proxy node db/init.js admin yourpassword
 **Note:** On first run, if no users exist, the proxy automatically creates an admin account with a random password displayed in the logs. Change this password immediately after first login.
 
 ## Configuration
+
+### Database Modes
+
+The proxy supports three database modes:
+
+#### 1. File-Based SQLite (Default)
+Persistent storage with local SQLite database file.
+
+```bash
+# In .env file
+USE_MEMORY_DB=false
+DB_PATH=/app/data/db/oye-proxy.db
+```
+
+**Use cases:**
+- Local development with persistent data
+- Production deployments on VMs or dedicated servers
+- Scenarios where data persistence across restarts is required
+
+#### 2. In-Memory SQLite
+Ephemeral storage using SQLite's in-memory database.
+
+```bash
+# In .env file
+USE_MEMORY_DB=true
+INITIAL_ADMIN_PASSWORD=your-secure-password  # Required for consistent access
+```
+
+**Use cases:**
+- Cloud Run or serverless deployments without persistent storage
+- Testing and development without filesystem requirements
+- Temporary or ephemeral environments
+
+**Important:** All data (users, logs, chargers, config) is lost on container restart. Set `INITIAL_ADMIN_PASSWORD` to ensure consistent admin access.
+
+#### 3. PostgreSQL (Production)
+Scalable database for production cloud deployments.
+
+```bash
+# In .env file or environment variables
+NODE_ENV=production
+DB_HOST=/cloudsql/your-project:region:instance  # Cloud SQL Unix socket path
+DB_USER=your-username
+DB_PASSWORD=your-password
+DB_NAME=oye_proxy
+DB_SSL=false  # or true for SSL connections
+```
+
+**Use cases:**
+- Google Cloud Run with Cloud SQL
+- Multi-instance deployments requiring shared database
+- Production environments needing reliability and backups
+
+**Docker Compose:** Uncomment the PostgreSQL configuration in `docker-compose.yml` and start with:
+```bash
+docker-compose --profile postgres up -d
+```
 
 ### Proxy Settings
 
@@ -301,9 +358,17 @@ docker-compose down
 
 ### Backup Database
 
+**File-based SQLite:**
 ```bash
 cp data/db/oye-proxy.db data/db/oye-proxy.db.backup-$(date +%Y%m%d)
 ```
+
+**PostgreSQL:**
+```bash
+pg_dump -h localhost -U postgres oye_proxy > oye-proxy-backup-$(date +%Y%m%d).sql
+```
+
+**Note:** In-memory databases cannot be backed up as data is ephemeral.
 
 ### Add New Users
 
@@ -483,6 +548,56 @@ wss://your-server-ip/ocpp/{chargePointId}
 
 Replace `{chargePointId}` with your charger's unique identifier.
 
+## Cloud Deployment
+
+### Google Cloud Run
+
+For serverless deployment on Cloud Run, use in-memory database mode:
+
+**Required Environment Variables:**
+```bash
+USE_MEMORY_DB=true
+INITIAL_ADMIN_PASSWORD=your-secure-password
+LOG_DIR=/tmp/logs
+PORT=8080
+```
+
+**Optional Environment Variables:**
+```bash
+DEBUG=false
+LOG_RETENTION_COUNT=1000
+CSMS_RECONNECT_MAX_ATTEMPTS=3
+CSMS_RECONNECT_BASE_DELAY=1000
+```
+
+**Deployment:**
+```bash
+gcloud run deploy oye-proxy \
+  --source . \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars USE_MEMORY_DB=true,INITIAL_ADMIN_PASSWORD=your-password
+```
+
+**Important Notes:**
+- Cloud Run's filesystem is read-only except `/tmp`
+- All data is lost when containers restart
+- Consider Cloud SQL PostgreSQL for persistent storage in production
+- WebSocket connections work but may be subject to Cloud Run timeout limits
+
+### Cloud Run with Cloud SQL (Production)
+
+For persistent storage with PostgreSQL:
+
+```bash
+gcloud run deploy oye-proxy \
+  --source . \
+  --region us-central1 \
+  --add-cloudsql-instances your-project:region:instance \
+  --set-env-vars NODE_ENV=production,DB_HOST=/cloudsql/your-project:region:instance,DB_USER=postgres,DB_NAME=oye_proxy \
+  --set-secrets DB_PASSWORD=oye-proxy-db-password:latest
+```
+
 ## Updating
 
 To update after code changes:
@@ -499,9 +614,11 @@ docker-compose up -d
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed troubleshooting guide.
 
 Common issues:
-- **Authentication failed**: Reset password with `docker exec -it oye-proxy node db/init.js username newpassword`
+- **Authentication failed**: Reset password with `docker exec -it oye-proxy node db/init.js username newpassword` (file-based DB only; for in-memory, restart with `INITIAL_ADMIN_PASSWORD` set)
 - **Chargers not connecting**: Check firewall rules (`sudo ufw allow 8080/tcp`)
-- **Database locked**: Stop container, remove lock files, restart
+- **Database locked**: Stop container, remove lock files, restart (SQLite only)
+- **Cloud Run filesystem errors**: Set `USE_MEMORY_DB=true` for serverless environments
+- **Data loss on restart**: Verify you're using file-based or PostgreSQL database, not in-memory mode
 
 ## Security
 
@@ -518,6 +635,7 @@ Common issues:
 1. **Scaling:** This architecture stores socket references in memory and cannot scale horizontally without adding Redis/external state store.
 2. **SQLite Concurrency:** Limited write concurrency (uses WAL mode for better performance).
 3. **In-Memory ID Tracking:** Restarting the server loses pending injection IDs.
+4. **In-Memory Database:** When using `USE_MEMORY_DB=true`, all data is ephemeral and lost on restart. Not suitable for production use unless data persistence is not required.
 
 ## Acknowledgments
 

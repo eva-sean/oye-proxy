@@ -941,9 +941,10 @@ function isRunningInDocker() {
     logger('INFO', 'Starting OCPP Proxy with environment configuration', {
         nodeEnv: process.env.NODE_ENV || 'development',
         runningInDocker: isRunningInDocker(),
+        useMemoryDb: process.env.USE_MEMORY_DB === 'true',
         port: PORT,
         debugMode: DEBUG,
-        dbPath: DB_PATH,
+        dbPath: process.env.USE_MEMORY_DB === 'true' ? ':memory:' : DB_PATH,
         logDir: process.env.LOG_DIR || path.join(__dirname, 'logs'),
         logRetentionCount: process.env.LOG_RETENTION_COUNT || '1000',
         csmsReconnectMaxAttempts: CSMS_RECONNECT_MAX_ATTEMPTS,
@@ -957,6 +958,32 @@ function isRunningInDocker() {
         dbSsl: process.env.DB_SSL || 'false',
         initialAdminPassword: process.env.INITIAL_ADMIN_PASSWORD ? '***masked***' : 'not set'
     });
+
+    // For in-memory database, run migrations and user creation inline (can't use separate process)
+    if (process.env.USE_MEMORY_DB === 'true') {
+        logger('INFO', 'Running inline database initialization for in-memory database...');
+        try {
+            await db.runMigrations();
+
+            const userCount = await db.countUsers();
+            if (userCount === 0) {
+                logger('INFO', 'No users found. Creating default admin user.');
+                let password;
+                if (process.env.INITIAL_ADMIN_PASSWORD) {
+                    password = process.env.INITIAL_ADMIN_PASSWORD;
+                    logger('INFO', 'Using password from INITIAL_ADMIN_PASSWORD environment variable.');
+                } else {
+                    password = crypto.randomBytes(16).toString('base64').slice(0, 16);
+                    logger('WARNING', 'No INITIAL_ADMIN_PASSWORD set. Generated random password:', { password });
+                }
+                await db.addUser('admin', hashPassword(password));
+                logger('INFO', 'Default admin user created');
+            }
+        } catch (err) {
+            logger('ERROR', 'Failed to initialize in-memory database', { error: err.message });
+            process.exit(1);
+        }
+    }
 
     await loadConfig();
 

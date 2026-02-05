@@ -4,10 +4,21 @@ const path = require('path');
 const config = require('../knexfile');
 const logger = require('../logger');
 
+// Singleton instance for in-memory database
+let sharedDbInstance = null;
+
 class DatabaseAdapter {
     constructor() {
         const environment = process.env.NODE_ENV === 'production' ? 'production' : 'development';
         const dbConfig = config[environment];
+        const useMemoryDb = process.env.USE_MEMORY_DB === 'true';
+
+        // Use singleton for in-memory database to share the same connection
+        if (useMemoryDb && sharedDbInstance) {
+            logger('INFO', 'Reusing existing in-memory database connection');
+            this.db = sharedDbInstance;
+            return;
+        }
 
         logger('INFO', `Initializing database adapter for environment: ${environment}`, {
             client: dbConfig.client,
@@ -15,6 +26,11 @@ class DatabaseAdapter {
         });
 
         this.db = knex(dbConfig);
+
+        // Store singleton for in-memory database
+        if (useMemoryDb) {
+            sharedDbInstance = this.db;
+        }
     }
 
     // Config methods
