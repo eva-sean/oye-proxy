@@ -920,8 +920,44 @@ async function logMessage(cpId, direction, payload) {
     }
 }
 
+// Helper function to detect Docker environment
+function isRunningInDocker() {
+    const fs = require('fs');
+    try {
+        // Check for .dockerenv file
+        if (fs.existsSync('/.dockerenv')) return true;
+
+        // Check cgroup for docker
+        const cgroup = fs.readFileSync('/proc/self/cgroup', 'utf8');
+        return cgroup.includes('docker') || cgroup.includes('kubepods');
+    } catch (err) {
+        return false;
+    }
+}
+
 // Initialize and start server
 (async () => {
+    // Log startup environment configuration
+    logger('INFO', 'Starting OCPP Proxy with environment configuration', {
+        nodeEnv: process.env.NODE_ENV || 'development',
+        runningInDocker: isRunningInDocker(),
+        port: PORT,
+        debugMode: DEBUG,
+        dbPath: DB_PATH,
+        logDir: process.env.LOG_DIR || path.join(__dirname, 'logs'),
+        logRetentionCount: process.env.LOG_RETENTION_COUNT || '1000',
+        csmsReconnectMaxAttempts: CSMS_RECONNECT_MAX_ATTEMPTS,
+        csmsReconnectBaseDelay: CSMS_RECONNECT_BASE_DELAY,
+        // PostgreSQL settings (production mode)
+        dbHost: process.env.DB_HOST || 'not set',
+        dbPort: process.env.DB_PORT || '5432',
+        dbUser: process.env.DB_USER || 'not set',
+        dbPassword: process.env.DB_PASSWORD ? '***masked***' : 'not set',
+        dbName: process.env.DB_NAME || 'not set',
+        dbSsl: process.env.DB_SSL || 'false',
+        initialAdminPassword: process.env.INITIAL_ADMIN_PASSWORD ? '***masked***' : 'not set'
+    });
+
     await loadConfig();
 
     // Run cleanup on startup
