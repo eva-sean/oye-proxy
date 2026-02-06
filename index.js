@@ -397,9 +397,13 @@ server.on('upgrade', (request, socket, head) => {
 wss.on('connection', async (chargerSocket, req, chargePointId) => {
     logger('INFO', 'Charger connected', { chargePointId });
 
-    // Register charger in database
+    // Register charger in database with connection metadata
     try {
-        await db.updateChargerStatus(chargePointId, 'ONLINE');
+        await db.updateChargerConnection(chargePointId, 'ONLINE', {
+            remoteAddress: req.socket.remoteAddress,
+            remotePort: req.socket.remotePort,
+            connectedAt: Math.floor(Date.now() / 1000)
+        });
     } catch (err) {
         logger('ERROR', 'Failed to register charger', { chargePointId, error: err.message });
     }

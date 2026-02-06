@@ -106,6 +106,30 @@ class DatabaseAdapter {
         }
     }
 
+    async updateChargerConnection(chargePointId, status, connectionInfo = {}) {
+        const lastSeen = Math.floor(Date.now() / 1000);
+        const updateData = { status, last_seen: lastSeen };
+
+        // Include connection metadata if provided
+        if (connectionInfo.remoteAddress) {
+            updateData.remote_ip = connectionInfo.remoteAddress;
+            updateData.remote_port = connectionInfo.remotePort;
+            updateData.connected_at = connectionInfo.connectedAt;
+        }
+
+        const existing = await this.db('chargers').where('charge_point_id', chargePointId).first();
+        if (existing) {
+            await this.db('chargers')
+                .where('charge_point_id', chargePointId)
+                .update(updateData);
+        } else {
+            await this.db('chargers').insert({
+                charge_point_id: chargePointId,
+                ...updateData
+            });
+        }
+    }
+
     async updateChargerLimit(chargePointId, maxPower) {
         // maxPower can be null
         const existing = await this.db('chargers').where('charge_point_id', chargePointId).first();

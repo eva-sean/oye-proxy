@@ -74,6 +74,7 @@ let messageLimit = 100;
 let chargerStatusData = {}; // Store parsed status data per charger
 let configurationData = {}; // Store configuration data per charger
 let proxyConfig = {}; // Store proxy configuration
+let chargersData = {}; // Store full charger data from API (including connection metadata)
 let lastFilterState = { charger: '', direction: '', messageType: '', dateFrom: '', dateTo: '' }; // Track filter changes
 let pollingInterval = null;
 let lastLogTimestamp = 0; // Track last log timestamp for incremental updates
@@ -515,6 +516,11 @@ async function fetchLogs() {
 function updateChargersList(chargers) {
     const now = Date.now();
     const oneHourAgo = now - (60 * 60 * 1000);
+
+    // Store full charger data for access by other components
+    chargers.forEach(charger => {
+        chargersData[charger.charge_point_id] = charger;
+    });
 
     // Process chargers
     const processedChargers = chargers.map(charger => {
@@ -1337,6 +1343,14 @@ function displayChargerStatus(chargerId) {
     html += '</div>';
     html += '<div class="status-grid">';
     html += `<div class="status-item"><strong>Charger ID:</strong> ${chargerId}</div>`;
+
+    // Add connection metadata if available
+    const chargerData = chargersData[chargerId];
+    if (chargerData && chargerData.remote_ip) {
+        html += `<div class="status-item"><strong>Remote IP:</strong> ${chargerData.remote_ip}:${chargerData.remote_port}</div>`;
+        html += `<div class="status-item"><strong>Connected:</strong> ${chargerData.connected_at ? formatTimestamp(chargerData.connected_at * 1000) : 'N/A'}</div>`;
+    }
+
     html += `<div class="status-item"><strong>Last Seen:</strong> ${data.lastSeen ? formatTimestamp(data.lastSeen) : 'N/A'}</div>`;
     html += `<div class="status-item"><strong>Last Heartbeat:</strong> ${data.lastHeartbeat ? formatTimestamp(data.lastHeartbeat) : 'N/A'}</div>`;
     html += '</div>';
